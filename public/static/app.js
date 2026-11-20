@@ -5,6 +5,17 @@ I18N.init();
 
 const t = (key, vars) => I18N.t(key, vars);
 
+const PAGE_SIZES = [20, 50, 100];
+
+function savedPageSize() {
+  try {
+    const value = Number(localStorage.getItem("asset_page_size"));
+    return PAGE_SIZES.includes(value) ? value : 20;
+  } catch {
+    return 20;
+  }
+}
+
 const state = {
   user: null,
   storage: "s3",
@@ -21,6 +32,9 @@ const state = {
   objectUrls: [],
   viewMode: localStorage.getItem("asset_view") === "card" ? "card" : "table",
   cardObserver: null,
+  page: 1,
+  pageSize: savedPageSize(),
+  pagination: null,
 };
 
 const ICONS = {
@@ -61,6 +75,7 @@ function setLanguage(lang) {
   renderStats();
   renderFilterOptions();
   renderAssets();
+  renderPager();
   renderUser();
   if (!$("#editorOverlay").hidden) refreshEditorLabels();
   if (!$("#detailOverlay").hidden && state.detailId) openDetail(state.detailId);
@@ -160,7 +175,61 @@ function currentQuery() {
   if (category) params.set("category", category);
   if (status) params.set("status", status);
   params.set("sort", sort);
+  params.set("page", String(state.page));
+  params.set("page_size", String(state.pageSize));
   return params;
+}
+
+function reloadFromFirstPage() {
+  state.page = 1;
+  loadAssets();
+}
+
+function goToPage(page) {
+  const pages = state.pagination?.pages || 1;
+  const next = Math.max(1, Math.min(pages, page));
+  if (next === state.page) return;
+  state.page = next;
+  loadAssets().then(() => {
+    const panel = $(".panel");
+    if (panel && panel.getBoundingClientRect().top < 0) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function pageWindow(current, pages) {
+  const set = new Set([1, pages, current - 1, current, current + 1]);
+  if (current <= 3) [2, 3, 4].forEach((n) => set.add(n));
+  if (current >= pages - 2) [pages - 1, pages - 2, pages - 3].forEach((n) => set.add(n));
+  const list = [...set].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const result = [];
+  list.forEach((n, index) => {
+    if (index && n - list[index - 1] > 1) result.push("…");
+    result.push(n);
+  });
+  return result;
+}
+
+function renderPager() {
+  const info = state.pagination || { page: 1, pages: 1, total: 0, pageSize: state.pageSize };
+  const bar = $("#pagerBar");
+  bar.hidden = info.total === 0;
+  const from = info.total ? (info.page - 1) * info.pageSize + 1 : 0;
+  const to = Math.min(info.total, info.page * info.pageSize);
+  $("#pagerInfo").textContent = t("pager.info", { from, to, total: info.total });
+  const buttons = [
+    `<button type="button" class="pager-btn" data-page="${info.page - 1}" ${info.page <= 1 ? "disabled" : ""} aria-label="${t("pager.prev")}">‹</button>`,
+    ...pageWindow(info.page, info.pages).map((item) =>
+      item === "…"
+        ? `<span class="pager-gap">…</span>`
+        : `<button type="button" class="pager-btn ${item === info.page ? "active" : ""}" data-page="${item}" ${item === info.page ? 'aria-current="page"' : ""}>${item}</button>`
+    ),
+    `<button type="button" class="pager-btn" data-page="${info.page + 1}" ${info.page >= info.pages ? "disabled" : ""} aria-label="${t("pager.next")}">›</button>`,
+  ];
+  $("#pagerControls").innerHTML = buttons.join("");
+  const select = $("#pageSizeSelect");
+  select.innerHTML = PAGE_SIZES.map(
+    (size) => `<option value="${size}" ${size === state.pageSize ? "selected" : ""}>${t("pager.perPage", { count: size })}</option>`
+  ).join("");
 }
 
 async function loadAssets() {
@@ -168,6 +237,9 @@ async function loadAssets() {
     const data = await apiFetch(`/api/assets?${currentQuery().toString()}`);
     state.items = data.items || [];
     state.stats = data.stats || {};
+    state.pagination = data.pagination || null;
+    if (state.pagination) state.page = state.pagination.page;
+    renderPager();
     state.storage = data.storage || "s3";
     $("#storageBanner").hidden = state.storage !== "none";
     renderStats();
@@ -214,7 +286,7 @@ function renderFilterOptions() {
 function renderTable() {
   const tbody = $("#assetTableBody");
   const items = state.items;
-  $("#resultCount").textContent = t("common.resultCount", { count: items.length });
+  $("#resultCount").textContent = t("common.resultCount", { count: state.stats.filtered ?? items.length });
   const hasFilter =
     $("#searchInput").value.trim() || $("#categoryFilter").value || $("#statusFilter").value;
   $("#emptyState").hidden = items.length > 0;
@@ -944,17 +1016,30 @@ function bindEvents() {
   let debounceTimer;
   $("#searchInput").addEventListener("input", () => {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(loadAssets, 250);
+    debounceTimer = setTimeout(reloadFromFirstPage, 250);
   });
   ["#categoryFilter", "#statusFilter", "#sortSelect"].forEach((selector) => {
-    $(selector).addEventListener("change", loadAssets);
+    $(selector).addEventListener("change", reloadFromFirstPage);
   });
   $("#resetFilterBtn").addEventListener("click", () => {
     $("#searchInput").value = "";
     $("#categoryFilter").value = "";
     $("#statusFilter").value = "";
     $("#sortSelect").value = "updated_desc";
-    loadAssets();
+    reloadFromFirstPage();
+  });
+  $("#pagerControls").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-page]");
+    if (button && !button.disabled) goToPage(Number(button.dataset.page));
+  });
+  $("#pageSizeSelect").addEventListener("change", (event) => {
+    state.pageSize = PAGE_SIZES.includes(Number(event.target.value)) ? Number(event.target.value) : 20;
+    try {
+      localStorage.setItem("asset_page_size", String(state.pageSize));
+    } catch {
+      // Storage may be unavailable; the choice still applies for this visit.
+    }
+    reloadFromFirstPage();
   });
 
   $("#assetTableBody").addEventListener("click", handleAssetAction);

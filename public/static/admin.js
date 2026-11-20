@@ -358,7 +358,7 @@ function actionLabel(action) {
 
 function applyI18n() {
   document.documentElement.lang = I18N.current === "en" ? "en" : "zh-CN";
-  document.title = `${t("adm.console")} · ModelVault`;
+  document.title = `${t("adm.console")} · POLYMODEL-Vault`;
   $$("[data-i18n]").forEach((el) => {
     el.textContent = t(el.dataset.i18n);
   });

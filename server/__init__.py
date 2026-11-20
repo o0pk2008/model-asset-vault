@@ -1,4 +1,4 @@
-"""ModelVault online edition — Flask application factory."""
+"""POLYMODEL-Vault online edition — Flask application factory."""
 from __future__ import annotations
 
 from datetime import timedelta

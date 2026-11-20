@@ -2,7 +2,7 @@
   const messages = {
     zh: {
       "app.title": "模型资产库",
-      "brand.sub": "团队模型资产管理",
+      "brand.sub": "VIZZIO.AI 团队模型资产管理",
       "common.help": "快捷说明",
       "common.cancel": "取消",
       "common.close": "关闭",
@@ -228,12 +228,16 @@
       "error.forbidden": "没有权限执行此操作",
       "error.badLogin": "用户名或密码错误",
       "error.storageNotReady": "存储尚未配置，请联系管理员在后台填写 AWS S3 信息",
+      "pager.info": "第 {from}-{to} 条，共 {total} 条",
+      "pager.prev": "上一页",
+      "pager.next": "下一页",
+      "pager.perPage": "{count} 条/页",
       "error.request": "请求失败（{status}）"
     },
 
     en: {
       "app.title": "Model Asset Library",
-      "brand.sub": "Team 3D asset management",
+      "brand.sub": "VIZZIO.AI Team 3D Asset Management",
       "common.help": "Quick guide",
       "common.cancel": "Cancel",
       "common.close": "Close",
@@ -459,6 +463,10 @@
       "error.forbidden": "You do not have permission to do this",
       "error.badLogin": "Incorrect username or password",
       "error.storageNotReady": "Storage is not configured. Ask an administrator to set up AWS S3.",
+      "pager.info": "{from}-{to} of {total}",
+      "pager.prev": "Previous page",
+      "pager.next": "Next page",
+      "pager.perPage": "{count} / page",
       "error.request": "Request failed ({status})"
     }
   };

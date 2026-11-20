@@ -21,6 +21,8 @@ TEXT_LIMITS = {
     "maker": 80,
 }
 OWNER_FIELDS = {"name", "code", "category", "tags", "description", "creator"}
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 100
 
 
 def storage_cfg() -> dict:
@@ -131,7 +133,19 @@ def list_assets():
     }
     order_sql = order_map.get(sort, order_map["updated_desc"])
 
-    rows = db.all(f"SELECT * FROM assets{where_sql} ORDER BY {order_sql}", params)
+    try:
+        page_size = int(request.args.get("page_size") or DEFAULT_PAGE_SIZE)
+        page = int(request.args.get("page") or 1)
+    except ValueError:
+        raise ApiError("分页参数无效")
+    page_size = max(1, min(page_size, MAX_PAGE_SIZE))
+    filtered = int(db.scalar(f"SELECT COUNT(*) AS n FROM assets{where_sql}", params) or 0)
+    pages = max(1, -(-filtered // page_size))
+    page = max(1, min(page, pages))
+    rows = db.all(
+        f"SELECT * FROM assets{where_sql} ORDER BY {order_sql} LIMIT {page_size} OFFSET {(page - 1) * page_size}",
+        params,
+    )
     summary = db.one(
         "SELECT COUNT(*) AS total, "
         "SUM(CASE WHEN glb_key IS NOT NULL AND glb_key != '' THEN 1 ELSE 0 END) AS completed, "
@@ -148,7 +162,7 @@ def list_assets():
     items = [asset_to_dict(row) for row in rows]
     stats = {
         "total": total,
-        "filtered": len(items),
+        "filtered": filtered,
         "pending": total - completed,
         "completed": completed,
         "withModel": completed,
@@ -156,7 +170,8 @@ def list_assets():
         "categories": categories,
         "lastCreated": last_row,
     }
-    return jsonify({"items": items, "stats": stats, "storage": storage_cfg()["backend"]})
+    pagination = {"page": page, "pageSize": page_size, "total": filtered, "pages": pages}
+    return jsonify({"items": items, "stats": stats, "pagination": pagination, "storage": storage_cfg()["backend"]})
 
 
 @bp.get("/assets/<int:asset_id>")

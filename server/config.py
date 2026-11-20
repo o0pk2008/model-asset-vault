@@ -30,7 +30,7 @@ if not _secret:
     if not key_file.exists():
         key_file.write_text(secrets.token_urlsafe(48), encoding="utf-8")
     _secret = key_file.read_text(encoding="utf-8").strip()
-    print("[ModelVault] SECRET_KEY 未设置，使用本地开发密钥 data/.dev_secret_key", file=sys.stderr)
+    print("[POLYMODEL-Vault] SECRET_KEY 未设置，使用本地开发密钥 data/.dev_secret_key", file=sys.stderr)
 SECRET_KEY = _secret
 
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "").strip().lower()

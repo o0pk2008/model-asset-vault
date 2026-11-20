@@ -14,7 +14,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", os.environ.get("ASSET_PORT", "8765")))
     host = os.environ.get("ASSET_HOST", "127.0.0.1")
     print("=" * 56)
-    print("ModelVault 在线版（本地开发模式）")
+    print("POLYMODEL-Vault 在线版（本地开发模式）")
     print(f"访问地址: http://{host}:{port}")
     print("=" * 56)
     try:

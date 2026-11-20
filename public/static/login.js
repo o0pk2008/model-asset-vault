@@ -7,7 +7,7 @@ let registrationMode = "open";
 
 function applyI18n() {
   document.documentElement.lang = I18N.current === "en" ? "en" : "zh-CN";
-  document.title = `${t("auth.loginTab")} · ModelVault`;
+  document.title = `${t("auth.loginTab")} · POLYMODEL-Vault`;
   $$("[data-i18n]").forEach((el) => {
     el.textContent = t(el.dataset.i18n);
   });
