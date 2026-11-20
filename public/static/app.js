@@ -6,6 +6,9 @@ I18N.init();
 const t = (key, vars) => I18N.t(key, vars);
 
 const state = {
+  user: null,
+  storage: "s3",
+  ownerOnly: false,
   items: [],
   stats: {},
   editingId: null,
@@ -58,6 +61,7 @@ function setLanguage(lang) {
   renderStats();
   renderFilterOptions();
   renderAssets();
+  renderUser();
   if (!$("#editorOverlay").hidden) refreshEditorLabels();
   if (!$("#detailOverlay").hidden && state.detailId) openDetail(state.detailId);
 }
@@ -111,8 +115,28 @@ function toast(message, type = "success") {
   setTimeout(() => element.remove(), 3200);
 }
 
+function can(perm) {
+  return Boolean(state.user?.permissions?.[perm]);
+}
+
+function goLogin() {
+  const next = encodeURIComponent(location.pathname + location.search);
+  location.href = `/login.html?next=${next}`;
+}
+
 async function apiFetch(url, options = {}) {
-  const response = await fetch(url, options);
+  const { json, headers, ...rest } = options;
+  const init = { credentials: "same-origin", ...rest };
+  init.headers = { "X-Requested-With": "ModelVault", ...(headers || {}) };
+  if (json !== undefined) {
+    init.body = JSON.stringify(json);
+    init.headers["Content-Type"] = "application/json";
+  }
+  const response = await fetch(url, init);
+  if (response.status === 401 && url !== "/api/auth/password") {
+    goLogin();
+    throw new Error(t("auth.sessionExpired"));
+  }
   let payload = null;
   try {
     payload = await response.json();
@@ -144,6 +168,8 @@ async function loadAssets() {
     const data = await apiFetch(`/api/assets?${currentQuery().toString()}`);
     state.items = data.items || [];
     state.stats = data.stats || {};
+    state.storage = data.storage || "s3";
+    $("#storageBanner").hidden = state.storage !== "none";
     renderStats();
     renderFilterOptions();
     renderAssets();
@@ -238,9 +264,9 @@ function renderTable() {
           <td>
             <div class="row-actions">
               <button class="action-btn view" type="button" data-action="view" data-id="${item.id}" title="${viewLabel}" aria-label="${viewLabel}">${ICONS.view}</button>
-              <button class="action-btn edit" type="button" data-action="edit" data-id="${item.id}" title="${editLabel}" aria-label="${editLabel}">${ICONS.edit}</button>
-              <button class="action-btn download" type="button" data-action="download" data-id="${item.id}" title="${downloadLabel}" aria-label="${downloadLabel}" ${item.glb_url ? "" : "disabled"}>${ICONS.download}</button>
-              <button class="action-btn danger" type="button" data-action="delete" data-id="${item.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICONS.delete}</button>
+              ${item.can_edit ? `<button class="action-btn edit" type="button" data-action="edit" data-id="${item.id}" title="${editLabel}" aria-label="${editLabel}">${ICONS.edit}</button>` : ""}
+              <button class="action-btn download" type="button" data-action="download" data-id="${item.id}" title="${downloadLabel}" aria-label="${downloadLabel}" ${item.has_glb ? "" : "disabled"}>${ICONS.download}</button>
+              ${item.can_delete ? `<button class="action-btn danger" type="button" data-action="delete" data-id="${item.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICONS.delete}</button>` : ""}
             </div>
           </td>
         </tr>`;
@@ -307,9 +333,9 @@ function renderCards() {
           </div>
           <div class="card-footer">
             <button class="action-btn view" type="button" data-action="view" data-id="${item.id}" title="${viewLabel}" aria-label="${viewLabel}">${ICONS.view}</button>
-            <button class="action-btn edit" type="button" data-action="edit" data-id="${item.id}" title="${editLabel}" aria-label="${editLabel}">${ICONS.edit}</button>
-            <button class="action-btn download" type="button" data-action="download" data-id="${item.id}" title="${downloadLabel}" aria-label="${downloadLabel}" ${item.glb_url ? "" : "disabled"}>${ICONS.download}</button>
-            <button class="action-btn danger" type="button" data-action="delete" data-id="${item.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICONS.delete}</button>
+            ${item.can_edit ? `<button class="action-btn edit" type="button" data-action="edit" data-id="${item.id}" title="${editLabel}" aria-label="${editLabel}">${ICONS.edit}</button>` : ""}
+            <button class="action-btn download" type="button" data-action="download" data-id="${item.id}" title="${downloadLabel}" aria-label="${downloadLabel}" ${item.has_glb ? "" : "disabled"}>${ICONS.download}</button>
+            ${item.can_delete ? `<button class="action-btn danger" type="button" data-action="delete" data-id="${item.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICONS.delete}</button>` : ""}
           </div>
         </article>`;
     })
@@ -369,7 +395,8 @@ function handleAssetAction(event) {
   if (action === "view") openDetail(id);
   if (action === "edit") {
     const asset = state.items.find((item) => item.id === id);
-    const needsCompletion = asset && !asset.glb_path && asset.status === "待制作";
+    if (!asset?.can_edit) return;
+    const needsCompletion = asset.edit_scope === "full" && !asset.has_glb && asset.status === "待制作";
     openEditor(id, needsCompletion ? "completion" : "edit");
   }
   if (action === "delete") deleteAsset(id);
@@ -482,7 +509,10 @@ function openEditor(id = null, mode = id ? "edit" : "create") {
 
   const isCompletion = mode === "completion";
   const isCreate = mode === "create";
-  $("#editorModeSwitch").hidden = !id;
+  const editingAsset = id ? state.items.find((item) => item.id === id) : null;
+  const ownerOnly = editingAsset?.edit_scope === "owner";
+  state.ownerOnly = ownerOnly;
+  $("#editorModeSwitch").hidden = !id || ownerOnly;
   $$("#editorModeSwitch button").forEach((button) => {
     button.classList.toggle("active", button.dataset.editorMode === mode);
   });
@@ -492,7 +522,7 @@ function openEditor(id = null, mode = id ? "edit" : "create") {
   $$(".upload-zone").forEach((zone) => {
     zone.hidden = isCompletion
       ? zone.dataset.field === "photo"
-      : isCreate
+      : isCreate || ownerOnly
         ? zone.dataset.field !== "photo"
         : false;
   });
@@ -683,14 +713,17 @@ function distributeFiles(files) {
   for (const file of list) {
     const isGlb = file.name.toLowerCase().endsWith(".glb");
     if (isGlb) {
+      if (state.ownerOnly || state.editorMode === "create") continue;
       changed = setFile("glb", file, true) || changed;
       continue;
     }
     if (!file.type.startsWith("image/")) continue;
 
     const imageFields = state.editorMode === "completion"
-      ? ["screenshot", "photo"]
-      : ["photo", "screenshot"];
+      ? ["screenshot"]
+      : state.editorMode === "create" || state.ownerOnly
+        ? ["photo"]
+        : ["photo", "screenshot"];
     let target = state.activePasteField;
     if (!imageFields.includes(target)) {
       target =
@@ -707,35 +740,88 @@ function distributeFiles(files) {
   else toast(t("toast.noFiles"), "error");
 }
 
+function uploadToStorage(sign, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    Object.entries(sign.fields || {}).forEach(([key, value]) => form.append(key, value));
+    form.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open(sign.method || "POST", sign.url);
+    if (sign.url.startsWith("/")) {
+      xhr.setRequestHeader("X-Requested-With", "ModelVault");
+      xhr.withCredentials = true;
+    }
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total);
+    });
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+        return;
+      }
+      const code = (xhr.responseText.match(/<Code>([^<]+)<\/Code>/) || [])[1];
+      if (code === "EntityTooLarge") reject(new Error(t("error.fileTooLarge")));
+      else reject(new Error(t("error.uploadFailed", { message: code || xhr.status })));
+    });
+    xhr.addEventListener("error", () => reject(new Error(t("error.uploadNetwork"))));
+    xhr.addEventListener("abort", () => reject(new Error(t("error.uploadAborted"))));
+    xhr.send(form);
+  });
+}
+
+async function uploadPendingFiles(button) {
+  const fields = ["photo", "screenshot", "glb"].filter((field) => state.files[field]);
+  const totalBytes = fields.reduce((sum, field) => sum + state.files[field].size, 0) || 1;
+  let doneBytes = 0;
+  const result = {};
+  for (const field of fields) {
+    const file = state.files[field];
+    const sign = await apiFetch("/api/uploads/presign", {
+      method: "POST",
+      json: { kind: field, filename: file.name, size: file.size },
+    });
+    await uploadToStorage(sign, file, (loaded) => {
+      const percent = Math.min(99, Math.floor(((doneBytes + loaded) / totalBytes) * 100));
+      button.textContent = t("editor.uploading", { percent });
+    });
+    doneBytes += file.size;
+    result[field] = { key: sign.key, name: file.name };
+  }
+  return result;
+}
+
 async function saveAsset() {
-  if (!$("#nameInput").value.trim()) {
+  const mode = state.editorMode;
+  if (mode !== "completion" && !$("#nameInput").value.trim()) {
     toast(t("toast.nameRequired"), "error");
     $("#nameInput").focus();
     return;
   }
 
-  const mode = state.editorMode;
-  const form = $("#assetForm");
-  const formData = new FormData(form);
-  ["photo", "screenshot", "glb"].forEach((field) => {
-    if (state.files[field]) formData.append(field, state.files[field]);
-    if (state.removed[field]) formData.append(`remove_${field}`, "true");
-  });
-  formData.delete("assetId");
-  formData.delete("status");
-  formData.delete("editorStatus");
-  formData.delete("completionStatus");
-  formData.delete("completionMaker");
-  if (mode === "completion") {
-    formData.set("maker", $("#makerInput").value.trim());
+  const payload = {};
+  if (mode !== "completion") {
+    payload.name = $("#nameInput").value.trim();
+    payload.code = $("#codeInput").value.trim();
+    payload.creator = $("#creatorInput").value.trim();
+    payload.category = $("#categoryInput").value.trim();
+    payload.tags = $("#tagsInput").value.trim();
+    payload.description = $("#descriptionInput").value.trim();
+  } else {
+    payload.maker = $("#makerInput").value.trim();
   }
 
   const button = $("#saveAssetBtn");
   button.disabled = true;
   button.textContent = t("editor.saving");
   try {
+    const uploaded = await uploadPendingFiles(button);
+    ["photo", "screenshot", "glb"].forEach((field) => {
+      if (uploaded[field]) payload[field] = uploaded[field];
+      else if (state.removed[field]) payload[field] = null;
+    });
+    button.textContent = t("editor.saving");
     const url = state.editingId ? `/api/assets/${state.editingId}` : "/api/assets";
-    await apiFetch(url, { method: state.editingId ? "PUT" : "POST", body: formData });
+    await apiFetch(url, { method: state.editingId ? "PUT" : "POST", json: payload });
     toast(
       mode === "completion"
         ? t("toast.savedCompletion")
@@ -780,8 +866,8 @@ function openDetail(id) {
   }
   setSplitRatio(50);
   $("#detailTitle").textContent = asset.name;
-  $("#detailDownloadBtn").href = asset.glb_url ? `/api/assets/${asset.id}/download` : "#";
-  $("#detailDownloadBtn").style.display = asset.glb_url ? "inline-flex" : "none";
+  $("#detailDownloadBtn").href = asset.has_glb ? `/api/assets/${asset.id}/download` : "#";
+  $("#detailDownloadBtn").style.display = asset.has_glb ? "inline-flex" : "none";
   $("#detailInfo").innerHTML = `
     <h3>${escapeHtml(asset.name)}</h3>
     <div class="info-code">${escapeHtml(asset.code || t("table.unnumbered"))}</div>
@@ -959,8 +1045,13 @@ function bindEvents() {
     if (isTyping && !files.some((file) => file.type.startsWith("image/") || file.name.toLowerCase().endsWith(".glb"))) {
       return;
     }
-    event.preventDefault();
-    if ($("#editorOverlay").hidden) openEditor();
+    if ($("#editorOverlay").hidden) {
+      if (!can("create") || !$("#accountOverlay").hidden) return;
+      event.preventDefault();
+      openEditor();
+    } else {
+      event.preventDefault();
+    }
     distributeFiles(files);
   });
 
@@ -1000,13 +1091,128 @@ function bindEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (!$("#imageOverlay").hidden) closeImagePreview();
+    if (!$("#accountOverlay").hidden) closeAccount();
+    else if (!$("#imageOverlay").hidden) closeImagePreview();
     else if (!$("#helpOverlay").hidden) $("#helpOverlay").hidden = true;
     else if (!$("#detailOverlay").hidden) closeDetail();
     else if (!$("#editorOverlay").hidden) closeEditor();
   });
 }
 
-applyStaticI18n();
-bindEvents();
-loadAssets();
+// ------------------------------------------------------------------ account
+
+function renderUser() {
+  const user = state.user;
+  if (!user) return;
+  const name = user.display_name || user.username;
+  $("#userAvatar").textContent = name.slice(0, 1).toUpperCase();
+  $("#userName").textContent = name;
+  $("#userRole").textContent = user.is_admin ? t("role.admin") : t("role.user");
+  $("#adminLink").hidden = !user.is_admin;
+  const perms = user.permissions || {};
+  const labels = ["create", "edit", "delete"]
+    .filter((perm) => perms[perm])
+    .map((perm) => t(`perm.${perm}`));
+  $("#userPerms").textContent = labels.length ? `${t("perm.viewDownload")} · ${labels.join(" · ")}` : t("perm.viewOnly");
+  $("#createBtn").hidden = !can("create");
+  $("#emptyCreateBtn").hidden = !can("create");
+}
+
+function toggleUserMenu(force) {
+  const menu = $("#userMenu");
+  const open = force ?? menu.hidden;
+  menu.hidden = !open;
+  $("#userButton").setAttribute("aria-expanded", String(open));
+}
+
+function openAccount() {
+  toggleUserMenu(false);
+  $("#profileNameInput").value = state.user?.display_name || "";
+  $("#accountUsername").textContent = state.user?.username || "";
+  ["#oldPasswordInput", "#newPasswordInput", "#confirmPasswordInput"].forEach((sel) => {
+    $(sel).value = "";
+  });
+  $("#accountOverlay").hidden = false;
+}
+
+function closeAccount() {
+  $("#accountOverlay").hidden = true;
+}
+
+async function saveProfile() {
+  const displayName = $("#profileNameInput").value.trim();
+  if (!displayName) {
+    toast(t("account.nameRequired"), "error");
+    return;
+  }
+  try {
+    const data = await apiFetch("/api/auth/profile", { method: "PUT", json: { display_name: displayName } });
+    state.user = data.user;
+    renderUser();
+    toast(t("account.profileSaved"));
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function savePassword() {
+  const oldPassword = $("#oldPasswordInput").value;
+  const newPassword = $("#newPasswordInput").value;
+  if (newPassword !== $("#confirmPasswordInput").value) {
+    toast(t("auth.passwordMismatch"), "error");
+    return;
+  }
+  try {
+    await apiFetch("/api/auth/password", {
+      method: "POST",
+      json: { old_password: oldPassword, new_password: newPassword },
+    });
+    toast(t("account.passwordSaved"));
+    closeAccount();
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function logout() {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    location.href = "/login.html";
+  }
+}
+
+function bindAccountEvents() {
+  $("#userButton").addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleUserMenu();
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#userMenu")) toggleUserMenu(false);
+  });
+  $("#accountBtn").addEventListener("click", openAccount);
+  $("#logoutBtn").addEventListener("click", logout);
+  $("#closeAccountBtn").addEventListener("click", closeAccount);
+  $("#accountOverlay").addEventListener("mousedown", (event) => {
+    if (event.target.id === "accountOverlay") closeAccount();
+  });
+  $("#saveProfileBtn").addEventListener("click", saveProfile);
+  $("#savePasswordBtn").addEventListener("click", savePassword);
+}
+
+async function boot() {
+  applyStaticI18n();
+  try {
+    const data = await apiFetch("/api/auth/me");
+    state.user = data.user;
+  } catch {
+    return;
+  }
+  document.body.classList.remove("booting");
+  renderUser();
+  bindEvents();
+  bindAccountEvents();
+  loadAssets();
+}
+
+boot();

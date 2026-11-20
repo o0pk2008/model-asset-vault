@@ -7,3 +7,6 @@ data/
 server.pid
 .DS_Store
 Thumbs.db
+.env
+.env.local
+.vercel/

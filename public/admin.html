@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理后台 · ModelVault</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/online.css">
+</head>
+<body class="booting">
+  <div class="admin-shell">
+    <aside class="admin-side">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2.8 20.4 7.5v9L12 21.2 3.6 16.5v-9L12 2.8Z"/>
+            <path d="M3.8 7.6 12 12l8.2-4.4M12 12v9.1"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">ModelVault</div>
+          <div class="brand-sub" data-i18n="adm.console">管理后台</div>
+        </div>
+      </div>
+      <nav class="admin-nav" id="adminNav">
+        <button type="button" data-section="overview" class="active"><span>◈</span><span data-i18n="adm.nav.overview">概览</span></button>
+        <button type="button" data-section="users"><span>◉</span><span data-i18n="adm.nav.users">用户管理</span><span class="nav-badge" id="pendingBadge" hidden>0</span></button>
+        <button type="button" data-section="storage"><span>▣</span><span data-i18n="adm.nav.storage">存储设置</span></button>
+        <button type="button" data-section="system"><span>⚙</span><span data-i18n="adm.nav.system">系统设置</span></button>
+        <button type="button" data-section="logs"><span>☰</span><span data-i18n="adm.nav.logs">操作日志</span></button>
+      </nav>
+      <div class="admin-side-foot">
+        <a class="btn btn-secondary" href="/" data-i18n="adm.backToLibrary">返回资产库</a>
+        <button class="btn btn-ghost" id="logoutBtn" type="button" data-i18n="auth.logout">退出登录</button>
+      </div>
+    </aside>
+
+    <main class="admin-main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">ADMIN CONSOLE</p>
+        </div>
+        <div class="topbar-right">
+          <div class="lang-switch" id="langSwitch" role="group" aria-label="Language">
+            <button type="button" data-lang="zh" class="active">中</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+          <span class="user-button"><span class="user-avatar" id="userAvatar">A</span><span class="user-text"><strong id="userName">—</strong><small data-i18n="role.admin">管理员</small></span></span>
+        </div>
+      </header>
+
+      <!-- overview -->
+      <section class="admin-section" data-panel="overview">
+        <h2 data-i18n="adm.nav.overview">概览</h2>
+        <p class="section-desc" data-i18n="adm.overview.desc">平台运行状态一览。</p>
+        <div class="stats" id="overviewStats"></div>
+        <div class="admin-grid-2">
+          <div class="admin-card">
+            <h3 data-i18n="adm.overview.platform">平台信息</h3>
+            <dl class="kv" id="platformInfo"></dl>
+          </div>
+          <div class="admin-card">
+            <h3><span data-i18n="adm.overview.recent">最近操作</span><button class="btn btn-text" type="button" data-goto="logs" data-i18n="adm.viewAll">查看全部</button></h3>
+            <div class="table-wrap"><table class="admin-table"><tbody id="recentLogs"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- users -->
+      <section class="admin-section" data-panel="users" hidden>
+        <h2 data-i18n="adm.nav.users">用户管理</h2>
+        <p class="section-desc" data-i18n="adm.users.desc">所有账号默认只能查看和下载模型；“创建任务 / 编辑成果 / 删除任务”需要分别授权。管理员拥有全部权限。</p>
+        <div class="admin-toolbar">
+          <div class="search-box">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="userSearch" type="search" data-i18n-placeholder="adm.users.search" autocomplete="off">
+          </div>
+          <select id="userStatusFilter">
+            <option value="" data-i18n="adm.status.all">全部状态</option>
+            <option value="pending" data-i18n="adm.status.pending">待审核</option>
+            <option value="active" data-i18n="adm.status.active">已启用</option>
+            <option value="disabled" data-i18n="adm.status.disabled">已停用</option>
+          </select>
+          <span style="flex:1"></span>
+          <button class="btn btn-primary" id="newUserBtn" type="button"><span class="btn-icon">＋</span><span data-i18n="adm.users.new">新建用户</span></button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th data-i18n="adm.users.colUser">用户</th>
+                <th data-i18n="adm.users.colStatus">角色 / 状态</th>
+                <th data-i18n="perm.create">创建任务</th>
+                <th data-i18n="perm.edit">编辑 / 提交成果</th>
+                <th data-i18n="perm.delete">删除任务</th>
+                <th data-i18n="adm.users.colLogin">最近登录</th>
+                <th data-i18n="table.actions">操作</th>
+              </tr>
+            </thead>
+            <tbody id="userTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- storage -->
+      <section class="admin-section" data-panel="storage" hidden>
+        <h2 data-i18n="adm.nav.storage">存储设置</h2>
+        <p class="section-desc" data-i18n="adm.storage.desc">参考照片、制作截图和 GLB 文件保存在 AWS S3。浏览器直接上传到存储桶，不经过 Vercel 服务器。</p>
+        <div class="admin-grid-2">
+          <div class="admin-card">
+            <h3><span data-i18n="adm.storage.s3">AWS S3 配置</span><span class="pill" id="storageStatePill"></span></h3>
+            <form id="storageForm" class="form-grid">
+              <label class="field"><span data-i18n="adm.storage.bucket">存储桶名称 (Bucket)</span><input name="bucket" placeholder="my-modelvault-bucket" autocomplete="off"></label>
+              <label class="field"><span data-i18n="adm.storage.region">区域 (Region)</span><input name="region" placeholder="ap-east-1" autocomplete="off"></label>
+              <label class="field field-wide"><span>Access Key ID</span><input name="access_key_id" placeholder="AKIA..." autocomplete="off"></label>
+              <label class="field field-wide"><span>Secret Access Key</span><input name="secret_access_key" type="password" autocomplete="new-password" id="secretInput"><small class="hint" data-i18n="adm.storage.secretHint">留空表示不修改。密钥加密后保存在数据库中，不会回显。</small></label>
+              <label class="field"><span data-i18n="adm.storage.prefix">路径前缀</span><input name="prefix" placeholder="modelvault/"></label>
+              <label class="field"><span data-i18n="adm.storage.expires">访问链接有效期（小时）</span><input name="url_hours" type="number" min="1" max="168" step="1"></label>
+              <label class="field field-wide"><span data-i18n="adm.storage.endpoint">自定义 Endpoint（可选）</span><input name="endpoint" placeholder="https://<account>.r2.cloudflarestorage.com"><small class="hint" data-i18n="adm.storage.endpointHint">仅 S3 兼容服务（Cloudflare R2、MinIO 等）需要填写，AWS S3 请留空。</small></label>
+            </form>
+            <div class="form-actions">
+              <button class="btn btn-secondary" id="testStorageBtn" type="button" data-i18n="adm.storage.test">测试连接</button>
+              <button class="btn btn-primary" id="saveStorageBtn" type="button" data-i18n="adm.save">保存</button>
+            </div>
+          </div>
+          <div>
+            <div class="admin-card">
+              <h3 data-i18n="adm.storage.cors">跨域 (CORS) 配置</h3>
+              <p class="hint" data-i18n="adm.storage.corsDesc">浏览器直传和在线预览需要存储桶允许本站域名访问。填写站点域名（每行一个）后一键写入存储桶。</p>
+              <label class="field"><textarea id="corsOrigins" rows="3"></textarea></label>
+              <div class="form-actions">
+                <button class="btn btn-secondary" id="applyCorsBtn" type="button" data-i18n="adm.storage.applyCors">写入 CORS 规则</button>
+              </div>
+              <pre class="code-block" id="corsResult" hidden></pre>
+            </div>
+            <div class="admin-card">
+              <h3><span data-i18n="adm.storage.usage">存储用量</span><button class="btn btn-mini" id="usageBtn" type="button" data-i18n="adm.storage.scan">扫描</button></h3>
+              <dl class="kv" id="usageInfo"><dt>—</dt><dd class="hint" data-i18n="adm.storage.scanHint">点击“扫描”统计存储桶中的文件。</dd></dl>
+              <div class="form-actions">
+                <button class="btn btn-mini btn-danger-text" id="cleanupBtn" type="button" data-i18n="adm.storage.cleanup">清理孤立文件</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="admin-card">
+          <h3 data-i18n="adm.storage.iam">建议的 IAM 最小权限策略</h3>
+          <p class="hint" data-i18n="adm.storage.iamDesc">为本平台单独创建一个 IAM 用户，只授予下面这个存储桶的权限，然后把它的 Access Key 填到上方。</p>
+          <pre class="code-block" id="iamPolicy"></pre>
+        </div>
+      </section>
+
+      <!-- system -->
+      <section class="admin-section" data-panel="system" hidden>
+        <h2 data-i18n="adm.nav.system">系统设置</h2>
+        <p class="section-desc" data-i18n="adm.system.desc">控制新用户如何加入平台。</p>
+        <div class="admin-card">
+          <h3 data-i18n="adm.system.registration">注册方式</h3>
+          <div class="radio-list" id="registrationModes">
+            <label><input type="radio" name="registration" value="open"><div><strong data-i18n="adm.reg.open">开放注册</strong><small data-i18n="adm.reg.openDesc">任何人都可以注册，注册后立即可以查看和下载模型。</small></div></label>
+            <label><input type="radio" name="registration" value="approval"><div><strong data-i18n="adm.reg.approval">注册需审核</strong><small data-i18n="adm.reg.approvalDesc">注册后进入“待审核”，管理员在用户管理中通过后才能登录。</small></div></label>
+            <label><input type="radio" name="registration" value="closed"><div><strong data-i18n="adm.reg.closed">关闭注册</strong><small data-i18n="adm.reg.closedDesc">只有管理员可以在后台创建账号。</small></div></label>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" id="saveSystemBtn" type="button" data-i18n="adm.save">保存</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- logs -->
+      <section class="admin-section" data-panel="logs" hidden>
+        <h2 data-i18n="adm.nav.logs">操作日志</h2>
+        <p class="section-desc" data-i18n="adm.logs.desc">记录登录、任务增删改、下载以及后台配置变更。</p>
+        <div class="admin-toolbar">
+          <div class="search-box">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="logSearch" type="search" data-i18n-placeholder="adm.logs.search" autocomplete="off">
+          </div>
+          <select id="logAction">
+            <option value="" data-i18n="adm.logs.all">全部类型</option>
+            <option value="user." data-i18n="adm.logs.user">账号</option>
+            <option value="asset." data-i18n="adm.logs.asset">任务 / 资产</option>
+            <option value="admin." data-i18n="adm.logs.admin">后台管理</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th data-i18n="adm.logs.time">时间</th><th data-i18n="adm.logs.actor">操作人</th><th data-i18n="adm.logs.action">操作</th><th data-i18n="adm.logs.target">对象</th><th data-i18n="adm.logs.detail">详情</th><th>IP</th></tr></thead>
+            <tbody id="logTable"></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <span id="logPageInfo"></span>
+          <button class="btn btn-mini" id="logPrev" type="button">‹</button>
+          <button class="btn btn-mini" id="logNext" type="button">›</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="overlay" id="userModal" hidden>
+    <section class="help-modal" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+      <div class="detail-header">
+        <div><p class="drawer-kicker">USER</p><h2 id="userModalTitle" data-i18n="adm.users.new">新建用户</h2></div>
+        <button class="icon-btn" type="button" data-close="userModal" aria-label="Close">×</button>
+      </div>
+      <form class="help-body form-grid" id="userForm">
+        <label class="field"><span data-i18n="auth.username">用户名</span><input name="username" required maxlength="32" autocomplete="off"></label>
+        <label class="field"><span data-i18n="auth.displayName">显示名称</span><input name="display_name" maxlength="40"></label>
+        <label class="field field-wide"><span data-i18n="adm.users.initialPassword">初始密码</span><input name="password" required autocomplete="off"><small class="hint" data-i18n="auth.passwordRule">至少 8 位，需包含字母和数字</small></label>
+        <div class="field field-wide">
+          <span data-i18n="perm.title">权限</span>
+          <div class="perm-legend">
+            <label><input type="checkbox" name="can_create"> <span data-i18n="perm.create">创建任务</span></label>
+            <label><input type="checkbox" name="can_edit"> <span data-i18n="perm.edit">编辑 / 提交成果</span></label>
+            <label><input type="checkbox" name="can_delete"> <span data-i18n="perm.delete">删除任务</span></label>
+            <label><input type="checkbox" name="is_admin"> <span data-i18n="role.admin">管理员</span></label>
+          </div>
+        </div>
+      </form>
+      <div class="detail-footer">
+        <button class="btn btn-secondary" type="button" data-close="userModal" data-i18n="common.cancel">取消</button>
+        <button class="btn btn-primary" type="button" id="createUserBtn" data-i18n="adm.users.create">创建</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/admin.js"></script>
+</body>
+</html>

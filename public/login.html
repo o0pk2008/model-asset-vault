@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · ModelVault</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/online.css">
+</head>
+<body>
+  <main class="auth-page">
+    <section class="auth-card">
+      <div class="auth-head">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2.8 20.4 7.5v9L12 21.2 3.6 16.5v-9L12 2.8Z"/>
+              <path d="M3.8 7.6 12 12l8.2-4.4M12 12v9.1"/>
+            </svg>
+          </div>
+          <div>
+            <div class="brand-name">ModelVault</div>
+            <div class="brand-sub" data-i18n="brand.sub">团队模型资产管理</div>
+          </div>
+        </div>
+        <div class="lang-switch" id="langSwitch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" class="active">中</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+      </div>
+
+      <div class="auth-tabs" id="authTabs" role="tablist">
+        <button type="button" data-tab="login" class="active" data-i18n="auth.loginTab">登录</button>
+        <button type="button" data-tab="register" data-i18n="auth.registerTab">注册</button>
+      </div>
+
+      <form class="auth-form" id="loginForm" autocomplete="on">
+        <label class="field">
+          <span data-i18n="auth.username">用户名</span>
+          <input name="username" autocomplete="username" required autocapitalize="none">
+        </label>
+        <label class="field">
+          <span data-i18n="auth.password">密码</span>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <div class="auth-msg" id="loginMsg" role="alert"></div>
+        <button class="btn btn-primary" type="submit" id="loginBtn" data-i18n="auth.login">登录</button>
+      </form>
+
+      <form class="auth-form" id="registerForm" hidden autocomplete="on">
+        <p class="hint" id="registerNote"></p>
+        <label class="field">
+          <span data-i18n="auth.username">用户名</span>
+          <input name="username" autocomplete="username" required autocapitalize="none" maxlength="32">
+          <small class="hint" data-i18n="auth.usernameHint">3-32 位小写字母、数字、下划线、点或短横线</small>
+        </label>
+        <label class="field">
+          <span data-i18n="auth.displayName">显示名称</span>
+          <input name="display_name" maxlength="40" data-i18n-placeholder="auth.displayNameHint">
+        </label>
+        <label class="field">
+          <span data-i18n="auth.password">密码</span>
+          <input name="password" type="password" autocomplete="new-password" required>
+          <small class="hint" data-i18n="auth.passwordRule">至少 8 位，需包含字母和数字</small>
+        </label>
+        <label class="field">
+          <span data-i18n="auth.confirmPassword">确认密码</span>
+          <input name="confirm" type="password" autocomplete="new-password" required>
+        </label>
+        <div class="auth-msg" id="registerMsg" role="alert"></div>
+        <button class="btn btn-primary" type="submit" id="registerBtn" data-i18n="auth.register">注册账号</button>
+      </form>
+
+      <p class="auth-foot" data-i18n="auth.subtitle">登录后查看和下载团队的 3D 模型资产</p>
+    </section>
+  </main>
+
+  <script src="/static/i18n.js"></script>
+  <script src="/static/login.js"></script>
+</body>
+</html>
