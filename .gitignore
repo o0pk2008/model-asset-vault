@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+data/
+.playwright-cli/
+server.pid
+.DS_Store
+Thumbs.db

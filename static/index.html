@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>模型资产库</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script type="module" src="/static/vendor/model-viewer.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2.8 20.4 7.5v9L12 21.2 3.6 16.5v-9L12 2.8Z"/>
+            <path d="M3.8 7.6 12 12l8.2-4.4M12 12v9.1"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">ModelVault</div>
+          <div class="brand-sub" data-i18n="brand.sub">本地模型资产管理</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="lang-switch" id="langSwitch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" class="active">中</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+        <button class="btn btn-ghost" id="helpBtn" type="button" data-i18n="common.help">快捷说明</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow" data-i18n="hero.eyebrow">ASSET LIBRARY</p>
+          <h1 data-i18n="hero.title">模型资产库</h1>
+          <p class="hero-desc" data-i18n="hero.desc">发起人粘贴参考照片创建条目，制作人查看照片后补充制作截图与 GLB，任务的每一步都清晰可见。</p>
+        </div>
+        <div class="hero-actions">
+          <button class="btn btn-secondary" id="refreshBtn" type="button">
+            <span class="btn-icon">↻</span><span data-i18n="common.refresh">刷新</span>
+          </button>
+          <button class="btn btn-primary" id="createBtn" type="button">
+            <span class="btn-icon">＋</span><span data-i18n="common.create">新增资产</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="stats" id="stats" aria-label="资产统计"></section>
+
+      <section class="panel">
+        <div class="toolbar">
+          <div class="search-box">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" data-i18n-placeholder="filter.search" placeholder="搜索名称、编号、标签或描述…" autocomplete="off">
+          </div>
+          <select id="categoryFilter" aria-label="Category filter"><option value="" data-i18n="filter.categoryAll">全部分类</option></select>
+          <select id="statusFilter" aria-label="Status filter">
+            <option value="" data-i18n="filter.statusAll">全部</option>
+            <option value="待制作" data-i18n="status.pending">待制作</option>
+            <option value="已完成" data-i18n="status.completed">已完成</option>
+          </select>
+          <select id="sortSelect" aria-label="Sort order">
+            <option value="updated_desc" data-i18n="sort.updated">最近更新</option>
+            <option value="created_desc" data-i18n="sort.created">最近创建</option>
+            <option value="name_asc" data-i18n="sort.nameAsc">名称升序</option>
+            <option value="name_desc" data-i18n="sort.nameDesc">名称降序</option>
+            <option value="size_desc" data-i18n="sort.size">文件最大</option>
+          </select>
+          <div class="view-switch" id="viewSwitch" role="group" aria-label="View mode">
+            <button type="button" data-view="table" class="active"><span aria-hidden="true">▦</span><span data-i18n="view.table">表格</span></button>
+            <button type="button" data-view="card"><span aria-hidden="true">▤</span><span data-i18n="view.card">卡片</span></button>
+          </div>
+          <button class="btn btn-text" id="resetFilterBtn" type="button" data-i18n="filter.reset">重置</button>
+          <span class="result-count" id="resultCount">0 项</span>
+        </div>
+
+        <div class="table-scroll" id="tableView">
+          <table class="asset-table">
+            <thead>
+              <tr>
+                <th class="col-media" data-i18n="table.photo">参考照片</th>
+                <th class="col-media" data-i18n="table.screenshot">制作截图</th>
+                <th class="col-name" data-i18n="table.info">资产信息</th>
+                <th data-i18n="table.category">分类 / 标签</th>
+                <th data-i18n="table.status">状态</th>
+                <th data-i18n="table.glb">GLB 文件</th>
+                <th data-i18n="table.updated">更新时间</th>
+                <th class="col-actions" data-i18n="table.actions">操作</th>
+              </tr>
+            </thead>
+            <tbody id="assetTableBody"></tbody>
+          </table>
+        </div>
+        <div class="card-grid" id="assetCardGrid" hidden></div>
+        <div class="empty-state" id="emptyState" hidden>
+          <div class="empty-icon" aria-hidden="true">◇</div>
+          <h3 data-i18n="empty.title">还没有匹配的资产</h3>
+          <p id="emptyHint"></p>
+          <button class="btn btn-primary" id="emptyCreateBtn" type="button"><span data-i18n="empty.create">新增第一个资产</span></button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="overlay" id="editorOverlay" hidden>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+      <div class="drawer-header">
+        <div>
+          <p class="drawer-kicker" data-i18n="editor.kicker">ASSET EDITOR</p>
+          <h2 id="editorTitle">新增资产</h2>
+          <div class="editor-mode-switch" id="editorModeSwitch" hidden>
+            <button type="button" data-editor-mode="edit" data-i18n="editor.modeBasic">基础信息</button>
+            <button type="button" data-editor-mode="completion" data-i18n="editor.modeCompletion">制作成果</button>
+          </div>
+        </div>
+        <button class="icon-btn" id="closeEditorBtn" type="button" aria-label="Close" data-i18n-aria="common.close">×</button>
+      </div>
+      <form id="assetForm" class="drawer-body">
+        <input type="hidden" id="assetId" name="assetId">
+        <input type="file" id="photoInput" accept="image/*" hidden>
+        <input type="file" id="screenshotInput" accept="image/*" hidden>
+        <input type="file" id="glbInput" accept=".glb,model/gltf-binary" hidden>
+
+        <div class="completion-context" id="completionContext" hidden>
+          <div class="completion-reference">
+            <img id="completionReferencePhoto" src="" alt="Reference photo" data-i18n-alt="editor.photo">
+            <span data-i18n="editor.reference">发起人提供的参考照片</span>
+          </div>
+          <div class="completion-copy">
+            <p class="completion-kicker" data-i18n="editor.task">制作任务</p>
+            <h3 id="completionReferenceName">—</h3>
+            <div id="completionReferenceMeta"></div>
+            <a id="completionOpenPhoto" href="#" target="_blank" rel="noreferrer" data-i18n="editor.viewLarge">查看大图 ↗</a>
+          </div>
+        </div>
+
+        <div class="form-grid" id="basicFields">
+          <label class="field field-wide">
+            <span><span data-i18n="editor.name">模型名称</span> <em>*</em></span>
+            <input id="nameInput" name="name" maxlength="120" data-i18n-placeholder="editor.namePlaceholder" placeholder="例如：工业机械臂 A-01" required>
+          </label>
+          <label class="field">
+            <span data-i18n="editor.code">资产编号</span>
+            <input id="codeInput" name="code" maxlength="80" data-i18n-placeholder="editor.codePlaceholder" placeholder="例如：MDL-001">
+          </label>
+          <label class="field">
+            <span data-i18n="editor.creator">发起人</span>
+            <input id="creatorInput" name="creator" maxlength="80" data-i18n-placeholder="editor.creatorPlaceholder" placeholder="记录创建这条任务的人">
+          </label>
+          <label class="field">
+            <span data-i18n="editor.category">分类</span>
+            <input id="categoryInput" name="category" maxlength="80" list="categoryOptions" data-i18n-placeholder="editor.categoryPlaceholder" placeholder="例如：角色 / 道具 / 建筑">
+            <datalist id="categoryOptions"></datalist>
+          </label>
+          <div class="field">
+            <span data-i18n="editor.status">状态</span>
+            <div class="status-readonly" id="statusReadonly">待制作</div>
+          </div>
+          <label class="field">
+            <span data-i18n="editor.tags">标签</span>
+            <input id="tagsInput" name="tags" maxlength="240" data-i18n-placeholder="editor.tagsPlaceholder" placeholder="用逗号分隔，例如：科幻, 硬表面, PBR">
+          </label>
+          <label class="field field-wide">
+            <span data-i18n="editor.description">描述</span>
+            <textarea id="descriptionInput" name="description" maxlength="2000" rows="3" data-i18n-placeholder="editor.descriptionPlaceholder" placeholder="补充用途、版本、备注等信息"></textarea>
+          </label>
+        </div>
+
+        <div class="completion-fields" id="completionFields" hidden>
+          <label class="field">
+            <span data-i18n="editor.maker">制作人</span>
+            <input id="makerInput" name="completionMaker" maxlength="80" data-i18n-placeholder="editor.makerPlaceholder" placeholder="填写制作人姓名，便于追溯">
+          </label>
+          <div class="completion-hint" data-i18n="editor.autoComplete">上传 GLB 后状态会自动变为“已完成”。</div>
+        </div>
+
+        <div class="section-title" id="fileSectionTitle"><span data-i18n="editor.fileCreate">参考照片</span><small data-i18n="editor.fileHint">支持粘贴、选择和拖拽</small></div>
+
+        <div class="upload-grid">
+          <div class="upload-zone" data-field="photo" id="photoZone" tabindex="0">
+            <div class="upload-preview" id="photoPreview"><span data-i18n="editor.photo">参考照片</span></div>
+            <div class="upload-meta">
+              <strong data-i18n="editor.photo">参考照片</strong>
+              <small id="photoMeta" data-i18n="editor.noFile">未选择文件</small>
+            </div>
+            <div class="upload-actions">
+              <button class="btn btn-mini" type="button" data-pick="photo" data-i18n="editor.selectImage">选择图片</button>
+              <button class="btn btn-mini btn-danger-text" type="button" data-remove="photo" data-i18n="editor.remove">移除</button>
+            </div>
+          </div>
+          <div class="upload-zone" data-field="screenshot" tabindex="0">
+            <div class="upload-preview" id="screenshotPreview"><span data-i18n="editor.screenshot">制作截图</span></div>
+            <div class="upload-meta">
+              <strong data-i18n="editor.screenshot">制作截图</strong>
+              <small id="screenshotMeta" data-i18n="editor.noFile">未选择文件</small>
+            </div>
+            <div class="upload-actions">
+              <button class="btn btn-mini" type="button" data-pick="screenshot" data-i18n="editor.selectImage">选择图片</button>
+              <button class="btn btn-mini btn-danger-text" type="button" data-remove="screenshot" data-i18n="editor.remove">移除</button>
+            </div>
+          </div>
+          <div class="upload-zone upload-zone-wide" data-field="glb" tabindex="0">
+            <div class="model-badge" id="glbPreview">GLB</div>
+            <div class="upload-meta">
+              <strong data-i18n="editor.glb">GLB 模型资产</strong>
+              <small id="glbMeta" data-i18n="editor.glbPlaceholder">选择 .glb 文件或拖入此处</small>
+            </div>
+            <div class="upload-actions">
+              <button class="btn btn-mini" type="button" data-pick="glb" data-i18n="editor.selectGlb">选择 GLB</button>
+              <button class="btn btn-mini btn-danger-text" type="button" data-remove="glb" data-i18n="editor.remove">移除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="paste-tip">
+          <span class="tip-icon">⌨</span>
+          <div>
+            <strong data-i18n="editor.pasteTitle">粘贴提示</strong>
+            <p data-i18n-html="editor.pasteHint">发起人在这里粘贴参考照片；制作人打开成果录入后粘贴制作截图与 GLB。点击上传卡片后再按 <kbd>Ctrl</kbd> + <kbd>V</kbd> 可指定目标位置，剪贴板中的 .glb 文件也会自动识别。</p>
+          </div>
+        </div>
+      </form>
+      <div class="drawer-footer">
+        <button class="btn btn-secondary" id="cancelEditorBtn" type="button" data-i18n="common.cancel">取消</button>
+        <button class="btn btn-primary" id="saveAssetBtn" type="button" data-i18n="editor.saveCreate">保存资产</button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="overlay" id="detailOverlay" hidden>
+    <section class="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <div class="detail-header">
+        <div>
+          <p class="drawer-kicker" data-i18n="detail.kicker">3D PREVIEW</p>
+          <h2 id="detailTitle">模型预览</h2>
+        </div>
+        <button class="icon-btn" id="closeDetailBtn" type="button" aria-label="Close" data-i18n-aria="common.close">×</button>
+      </div>
+      <div class="detail-content">
+        <div class="preview-split" id="previewSplit" style="--split:50%">
+          <div class="split-pane split-photo" id="photoPane">
+            <img id="detailPhoto" class="detail-photo" src="" alt="Reference photo" data-i18n-alt="detail.referencePhoto">
+            <div class="split-placeholder" id="detailPhotoPlaceholder" data-i18n="detail.noReference">该资产没有参考照片</div>
+            <span class="split-label" data-i18n="detail.referencePhoto">参考照片</span>
+          </div>
+          <div class="split-divider" id="splitDivider" role="separator" aria-orientation="vertical" aria-label="Drag to resize preview" tabindex="0" data-i18n-aria="detail.resize"><span></span></div>
+          <div class="split-pane split-model" id="modelPane">
+            <model-viewer id="modelViewer" alt="GLB preview" camera-controls auto-rotate shadow-intensity="1" exposure="1" environment-image="/static/env/studio.hdr" interaction-prompt="none" style="width:100%;height:100%;--poster-color:transparent;"></model-viewer>
+            <div class="viewer-placeholder" id="viewerPlaceholder" data-i18n="detail.placeholder">该资产尚未上传 GLB 文件</div>
+            <div class="viewer-loading" id="viewerLoading" hidden data-i18n="detail.loading">模型加载中…</div>
+            <span class="split-label" data-i18n="detail.modelPreview">模型预览</span>
+          </div>
+        </div>
+        <div class="detail-info" id="detailInfo"></div>
+      </div>
+      <div class="detail-footer">
+        <button class="btn btn-secondary" id="detailCloseBtn" type="button" data-i18n="detail.close">关闭</button>
+        <a class="btn btn-primary" id="detailDownloadBtn" href="#" download data-i18n="detail.download">下载 GLB</a>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay" id="helpOverlay" hidden>
+    <section class="help-modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="detail-header">
+        <div>
+          <p class="drawer-kicker" data-i18n="help.kicker">QUICK GUIDE</p>
+          <h2 id="helpTitle" data-i18n="help.title">快捷说明</h2>
+        </div>
+        <button class="icon-btn" id="closeHelpBtn" type="button" aria-label="Close" data-i18n-aria="common.close">×</button>
+      </div>
+      <div class="help-body">
+        <ol>
+          <li data-i18n-html="help.line1"></li>
+          <li data-i18n-html="help.line2"></li>
+          <li data-i18n-html="help.line3"></li>
+          <li data-i18n-html="help.line4"></li>
+          <li data-i18n-html="help.line5"></li>
+          <li data-i18n-html="help.line6"></li>
+        </ol>
+      </div>
+      <div class="detail-footer">
+        <button class="btn btn-primary" id="helpCloseBtn" type="button" data-i18n="help.close">知道了</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay" id="imageOverlay" hidden>
+    <section class="image-modal" role="dialog" aria-modal="true" aria-labelledby="imagePreviewTitle">
+      <div class="detail-header">
+        <div>
+          <p class="drawer-kicker" data-i18n="image.kicker">IMAGE PREVIEW</p>
+          <h2 id="imagePreviewTitle">图片预览</h2>
+        </div>
+        <button class="icon-btn" id="closeImageBtn" type="button" aria-label="Close" data-i18n-aria="common.close">×</button>
+      </div>
+      <div class="image-modal-body">
+        <img id="imagePreviewImg" src="" alt="">
+      </div>
+      <div class="image-modal-footer">
+        <span id="imagePreviewCaption"></span>
+        <a class="btn btn-secondary" id="imagePreviewOpen" href="#" target="_blank" rel="noreferrer" data-i18n="image.openNew">新窗口打开</a>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <script src="/static/i18n.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
