@@ -141,6 +141,14 @@
                 <button class="btn btn-mini btn-danger-text" id="cleanupBtn" type="button" data-i18n="adm.storage.cleanup">清理孤立文件</button>
               </div>
             </div>
+            <div class="admin-card">
+              <h3 data-i18n="adm.images.title">压缩已有图片</h3>
+              <p class="hint" data-i18n="adm.images.desc">把已上传的参考照片和制作截图统一缩小到不超过 1024×1024 并转为 WebP，加快列表和预览加载。原图会被替换，GLB 不受影响。</p>
+              <dl class="kv"><dt data-i18n="adm.images.pending">待压缩</dt><dd id="imagesPending">—</dd><dt data-i18n="adm.images.progress">进度</dt><dd id="imagesProgress">—</dd></dl>
+              <div class="form-actions">
+                <button class="btn btn-mini" id="compressImagesBtn" type="button" data-i18n="adm.images.start">开始压缩</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="admin-card">

@@ -18,6 +18,7 @@ function applyI18n() {
     button.classList.toggle("active", button.dataset.lang === I18N.current);
   });
   renderRegisterNote();
+  $$("[data-pw-toggle]").forEach(labelPasswordToggle);
 }
 
 function renderRegisterNote() {
@@ -108,6 +109,7 @@ $("#registerForm").addEventListener("submit", async (event) => {
     if (data.pending) {
       setMessage("#registerMsg", t("auth.pending"), true);
       event.target.reset();
+      resetPasswordToggles(event.target);
     } else {
       location.href = nextUrl();
     }
@@ -118,6 +120,31 @@ $("#registerForm").addEventListener("submit", async (event) => {
     button.textContent = t("auth.register");
   }
 });
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-pw-toggle]");
+  if (!button) return;
+  const input = button.parentElement.querySelector("input");
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  button.setAttribute("aria-pressed", String(show));
+  labelPasswordToggle(button);
+});
+
+function labelPasswordToggle(button) {
+  const shown = button.getAttribute("aria-pressed") === "true";
+  const label = t(shown ? "auth.hidePassword" : "auth.showPassword");
+  button.setAttribute("aria-label", label);
+  button.title = label;
+}
+
+function resetPasswordToggles(form) {
+  form.querySelectorAll("[data-pw-toggle]").forEach((button) => {
+    button.parentElement.querySelector("input").type = "password";
+    button.setAttribute("aria-pressed", "false");
+    labelPasswordToggle(button);
+  });
+}
 
 async function init() {
   applyI18n();

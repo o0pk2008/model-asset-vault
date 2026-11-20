@@ -462,3 +462,29 @@ def list_objects(cfg: dict, max_items: int = 20000) -> list[dict]:
             break
         token = response.get("NextContinuationToken")
     return items
+
+
+# ------------------------------------------------------------------ raw object IO
+
+def read_bytes(cfg: dict, key: str) -> bytes:
+    _require(cfg)
+    if cfg["backend"] == "local":
+        return local_path(key).read_bytes()
+    response = s3_client(cfg).get_object(Bucket=cfg["bucket"], Key=key)
+    return response["Body"].read()
+
+
+def write_bytes(cfg: dict, key: str, data: bytes, content_type: str) -> None:
+    _require(cfg)
+    if cfg["backend"] == "local":
+        path = local_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return
+    s3_client(cfg).put_object(
+        Bucket=cfg["bucket"],
+        Key=key,
+        Body=data,
+        ContentType=content_type,
+        CacheControl="private, max-age=31536000, immutable",
+    )

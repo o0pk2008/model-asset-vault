@@ -42,7 +42,7 @@
         </label>
         <label class="field">
           <span data-i18n="auth.password">密码</span>
-          <input name="password" type="password" autocomplete="current-password" required>
+          <div class="pw-field"><input name="password" type="password" autocomplete="current-password" required><button type="button" class="pw-toggle" data-pw-toggle aria-label="显示密码" aria-pressed="false"><svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
         </label>
         <div class="auth-msg" id="loginMsg" role="alert"></div>
         <button class="btn btn-primary" type="submit" id="loginBtn" data-i18n="auth.login">登录</button>
@@ -61,12 +61,12 @@
         </label>
         <label class="field">
           <span data-i18n="auth.password">密码</span>
-          <input name="password" type="password" autocomplete="new-password" required>
+          <div class="pw-field"><input name="password" type="password" autocomplete="new-password" required><button type="button" class="pw-toggle" data-pw-toggle aria-label="显示密码" aria-pressed="false"><svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
           <small class="hint" data-i18n="auth.passwordRule">至少 8 位，需包含字母和数字</small>
         </label>
         <label class="field">
           <span data-i18n="auth.confirmPassword">确认密码</span>
-          <input name="confirm" type="password" autocomplete="new-password" required>
+          <div class="pw-field"><input name="confirm" type="password" autocomplete="new-password" required><button type="button" class="pw-toggle" data-pw-toggle aria-label="显示密码" aria-pressed="false"><svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
         </label>
         <div class="auth-msg" id="registerMsg" role="alert"></div>
         <button class="btn btn-primary" type="submit" id="registerBtn" data-i18n="auth.register">注册账号</button>

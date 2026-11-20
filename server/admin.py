@@ -341,6 +341,40 @@ def storage_cleanup():
     return jsonify({"deleted": len(targets), "size": freed})
 
 
+# ------------------------------------------------------------------ image compression
+
+@bp.get("/images/status")
+@admin_required
+def images_status():
+    from .images import pending_count
+
+    return jsonify({"pending": pending_count(get_db())})
+
+
+@bp.post("/images/compress")
+@admin_required
+def images_compress():
+    from .images import run_batch
+
+    db = get_db()
+    cfg = storage.load_config(db)
+    if cfg["backend"] == "none":
+        raise ApiError("存储尚未配置，请联系管理员在后台填写 AWS S3 信息")
+    try:
+        after_id = int(body().get("cursor") or 0)
+    except (TypeError, ValueError):
+        raise ApiError("参数无效")
+    result = run_batch(db, cfg, after_id)
+    if result["processed"] or result["failed"]:
+        log_action(
+            "admin.images_compress",
+            "storage",
+            f"compressed={result['processed']} failed={result['failed']} "
+            f"before={result['before']} after={result['after']}",
+        )
+    return jsonify(result)
+
+
 # ------------------------------------------------------------------ audit log
 
 @bp.get("/logs")

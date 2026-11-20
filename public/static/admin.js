@@ -135,6 +135,18 @@ I18N.extend({
     "act.admin.storage_update": "修改存储设置",
     "act.admin.storage_cors": "写入 CORS",
     "act.admin.storage_cleanup": "清理孤立文件",
+    "act.admin.images_compress": "压缩已有图片",
+    "adm.images.title": "压缩已有图片",
+    "adm.images.desc": "把已上传的参考照片和制作截图统一缩小到不超过 1024×1024 并转为 WebP，加快列表和预览加载。原图会被替换，GLB 不受影响。",
+    "adm.images.pending": "待压缩",
+    "adm.images.progress": "进度",
+    "adm.images.start": "开始压缩",
+    "adm.images.running": "压缩中…",
+    "adm.images.none": "没有需要压缩的图片",
+    "adm.images.count": "{count} 张",
+    "adm.images.stat": "已压缩 {count} 张，失败 {failed} 张，{before} → {after}",
+    "adm.images.confirm": "将压缩 {count} 张图片并替换原图，此操作不可撤销。继续吗？",
+    "adm.images.done": "图片压缩完成",
   },
   en: {
     "adm.console": "Admin console",
@@ -268,6 +280,18 @@ I18N.extend({
     "act.admin.storage_update": "Changed storage settings",
     "act.admin.storage_cors": "Applied CORS",
     "act.admin.storage_cleanup": "Cleaned up orphans",
+    "act.admin.images_compress": "Compressed images",
+    "adm.images.title": "Compress existing images",
+    "adm.images.desc": "Shrink uploaded reference photos and screenshots to at most 1024×1024 and convert them to WebP so lists and previews load faster. Originals are replaced; GLB files are untouched.",
+    "adm.images.pending": "Pending",
+    "adm.images.progress": "Progress",
+    "adm.images.start": "Start",
+    "adm.images.running": "Compressing…",
+    "adm.images.none": "No images need compressing",
+    "adm.images.count": "{count} image(s)",
+    "adm.images.stat": "{count} compressed, {failed} failed, {before} → {after}",
+    "adm.images.confirm": "Compress {count} image(s) and replace the originals? This cannot be undone.",
+    "adm.images.done": "Image compression finished",
   },
 });
 
@@ -595,6 +619,7 @@ async function loadSettings() {
   pill.textContent = s.configured ? t("adm.storage.ready") : s.backend === "local" ? t("adm.storage.local") : t("adm.storage.notReady");
   if (!$("#corsOrigins").value.trim()) $("#corsOrigins").value = data.origin;
   $("#iamPolicy").textContent = iamPolicy(s.bucket, s.prefix);
+  loadImageStatus();
   const radio = $(`#registrationModes input[value="${data.registration_mode}"]`);
   if (radio) radio.checked = true;
 }
@@ -661,6 +686,50 @@ async function scanUsage() {
     $("#usageInfo").innerHTML = rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
   });
   button.textContent = t("adm.storage.scan");
+}
+
+async function loadImageStatus() {
+  const data = await guard(null, () => api("/api/admin/images/status"));
+  if (!data) return null;
+  $("#imagesPending").textContent = data.pending ? t("adm.images.count", { count: data.pending }) : t("adm.images.none");
+  $("#compressImagesBtn").disabled = !data.pending;
+  return data.pending;
+}
+
+async function compressImages() {
+  const pending = await loadImageStatus();
+  if (!pending || !confirm(t("adm.images.confirm", { count: pending }))) return;
+  const button = $("#compressImagesBtn");
+  button.disabled = true;
+  button.textContent = t("adm.images.running");
+  const totals = { processed: 0, failed: 0, before: 0, after: 0 };
+  let cursor = 0;
+  let idleRounds = 0;
+  try {
+    for (;;) {
+      const result = await api("/api/admin/images/compress", { method: "POST", json: { cursor } });
+      ["processed", "failed", "before", "after"].forEach((key) => {
+        totals[key] += result[key] || 0;
+      });
+      $("#imagesProgress").textContent = t("adm.images.stat", {
+        count: totals.processed,
+        failed: totals.failed,
+        before: formatBytes(totals.before),
+        after: formatBytes(totals.after),
+      });
+      $("#imagesPending").textContent = result.pending ? t("adm.images.count", { count: result.pending }) : t("adm.images.none");
+      if (result.done) break;
+      idleRounds = result.cursor === cursor && !result.processed && !result.failed ? idleRounds + 1 : 0;
+      if (idleRounds >= 3) break;
+      cursor = result.cursor;
+    }
+    toast(t("adm.images.done"));
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    button.textContent = t("adm.images.start");
+    await loadImageStatus();
+  }
 }
 
 async function cleanup() {
@@ -747,6 +816,7 @@ function bindEvents() {
   $("#applyCorsBtn").addEventListener("click", applyCors);
   $("#usageBtn").addEventListener("click", scanUsage);
   $("#cleanupBtn").addEventListener("click", cleanup);
+  $("#compressImagesBtn").addEventListener("click", compressImages);
   $("#saveSystemBtn").addEventListener("click", saveSystem);
 
   $("#logSearch").addEventListener("input", () => {

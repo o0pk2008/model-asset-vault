@@ -32,6 +32,7 @@ const state = {
   objectUrls: [],
   viewMode: localStorage.getItem("asset_view") === "card" ? "card" : "table",
   cardObserver: null,
+  compressing: {},
   page: 1,
   pageSize: savedPageSize(),
   pagination: null,
@@ -755,11 +756,67 @@ function validateFile(field, file) {
   return true;
 }
 
+const MAX_IMAGE_EDGE = 1024;
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+// Downscale an image to at most 1024×1024 and re-encode it as WebP (JPEG where
+// WebP encoding is unavailable). GIFs are kept as-is so animations survive.
+async function compressImage(file) {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    return file;
+  }
+  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.imageSmoothingQuality = "high";
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+
+  let blob = await canvasToBlob(canvas, "image/webp", 0.85);
+  let extension = "webp";
+  if (!blob || blob.type !== "image/webp") {
+    context.globalCompositeOperation = "destination-over";
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    blob = await canvasToBlob(canvas, "image/jpeg", 0.88);
+    extension = "jpg";
+  }
+  if (!blob || (scale === 1 && blob.size >= file.size)) return file;
+  const base = file.name.replace(/\.[^.]+$/, "") || "image";
+  return new File([blob], `${base}.${extension}`, { type: blob.type, lastModified: Date.now() });
+}
+
 function setFile(field, file, quiet = false) {
   if (!file || !validateFile(field, file)) return false;
   revokeObjectUrls();
   state.files[field] = file;
   state.removed[field] = false;
+  if (field !== "glb") {
+    const original = file;
+    state.compressing[field] = compressImage(original)
+      .catch(() => original)
+      .then((compressed) => {
+        if (state.files[field] === original && compressed !== original) {
+          state.files[field] = compressed;
+          revokeObjectUrls();
+          renderAllUploads();
+        }
+      })
+      .finally(() => {
+        delete state.compressing[field];
+      });
+  }
   renderAllUploads();
   if (!quiet) {
     const label =
@@ -842,6 +899,7 @@ function uploadToStorage(sign, file, onProgress) {
 }
 
 async function uploadPendingFiles(button) {
+  await Promise.all(Object.values(state.compressing));
   const fields = ["photo", "screenshot", "glb"].filter((field) => state.files[field]);
   const totalBytes = fields.reduce((sum, field) => sum + state.files[field].size, 0) || 1;
   let doneBytes = 0;
@@ -1025,7 +1083,7 @@ function bindEvents() {
     $("#searchInput").value = "";
     $("#categoryFilter").value = "";
     $("#statusFilter").value = "";
-    $("#sortSelect").value = "updated_desc";
+    $("#sortSelect").value = "created_desc";
     reloadFromFirstPage();
   });
   $("#pagerControls").addEventListener("click", (event) => {

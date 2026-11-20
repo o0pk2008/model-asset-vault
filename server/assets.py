@@ -101,7 +101,7 @@ def list_assets():
     query = (request.args.get("query") or "").strip().lower()
     category = (request.args.get("category") or "").strip()
     status = (request.args.get("status") or "").strip()
-    sort = request.args.get("sort") or "updated_desc"
+    sort = request.args.get("sort") or "created_desc"
     mine = request.args.get("mine") == "1"
 
     clauses: list[str] = []
@@ -131,7 +131,7 @@ def list_assets():
         "name_desc": "LOWER(name) DESC, id DESC",
         "size_desc": "glb_size DESC, id DESC",
     }
-    order_sql = order_map.get(sort, order_map["updated_desc"])
+    order_sql = order_map.get(sort, order_map["created_desc"])
 
     try:
         page_size = int(request.args.get("page_size") or DEFAULT_PAGE_SIZE)
