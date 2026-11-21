@@ -1,6 +1,9 @@
 """Asset (task) API: list, create, update, delete, download, upload signing."""
 from __future__ import annotations
 
+import re
+from collections import Counter
+
 from flask import Blueprint, abort, g, jsonify, redirect, request, send_file
 
 from . import config, storage
@@ -21,6 +24,7 @@ TEXT_LIMITS = {
     "maker": 80,
 }
 OWNER_FIELDS = {"name", "code", "category", "tags", "description", "creator"}
+POPULAR_TAG_LIMIT = 24
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 
@@ -156,6 +160,11 @@ def list_assets():
         for row in db.all("SELECT DISTINCT category FROM assets WHERE category != '' ORDER BY category")
     ]
     last_row = db.one("SELECT name, code, category FROM assets ORDER BY id DESC LIMIT 1")
+    tag_counts: Counter = Counter()
+    for tag_row in db.all("SELECT tags FROM assets WHERE tags != ''"):
+        seen = {tag.strip() for tag in re.split(r"[,，]", tag_row["tags"] or "") if tag.strip()}
+        tag_counts.update(seen)
+    popular_tags = [{"tag": tag, "count": count} for tag, count in tag_counts.most_common(POPULAR_TAG_LIMIT)]
 
     total = int(summary.get("total") or 0)
     completed = int(summary.get("completed") or 0)
@@ -169,6 +178,7 @@ def list_assets():
         "totalSize": int(summary.get("total_size") or 0),
         "categories": categories,
         "lastCreated": last_row,
+        "popularTags": popular_tags,
     }
     pagination = {"page": page, "pageSize": page_size, "total": filtered, "pages": pages}
     return jsonify({"items": items, "stats": stats, "pagination": pagination, "storage": storage_cfg()["backend"]})

@@ -282,6 +282,55 @@ function renderFilterOptions() {
   $("#categoryOptions").innerHTML = categories
     .map((category) => `<option value="${escapeHtml(category)}"></option>`)
     .join("");
+  renderTagBar();
+}
+
+function splitTags(text) {
+  return String(text || "")
+    .split(/[,，]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+// Row of popular tags under the search bar: click to search, click again to clear.
+function renderTagBar() {
+  const tags = state.stats.popularTags || [];
+  $("#tagBar").hidden = !tags.length;
+  const current = $("#searchInput").value.trim().toLowerCase();
+  $("#tagBarList").innerHTML = tags
+    .map(({ tag, count }) => {
+      const active = tag.toLowerCase() === current;
+      return `<button type="button" class="tag-chip ${active ? "active" : ""}" data-tag="${escapeHtml(tag)}" aria-pressed="${active}">${escapeHtml(tag)}<small>${count}</small></button>`;
+    })
+    .join("");
+}
+
+// Popular tags under the editor's tag field: click to add, click again to remove.
+function renderTagSuggest() {
+  const tags = state.stats.popularTags || [];
+  const box = $("#tagSuggest");
+  box.hidden = !tags.length;
+  const chosen = new Set(splitTags($("#tagsInput").value).map((tag) => tag.toLowerCase()));
+  box.innerHTML = tags
+    .map(({ tag }) => {
+      const active = chosen.has(tag.toLowerCase());
+      return `<button type="button" class="tag-chip ${active ? "active" : ""}" data-tag="${escapeHtml(tag)}" aria-pressed="${active}">${escapeHtml(tag)}</button>`;
+    })
+    .join("");
+}
+
+function toggleEditorTag(tag) {
+  const list = splitTags($("#tagsInput").value);
+  const index = list.findIndex((item) => item.toLowerCase() === tag.toLowerCase());
+  if (index >= 0) list.splice(index, 1);
+  else list.push(tag);
+  const text = list.join(", ");
+  if (text.length > 240) {
+    toast(t("tags.tooLong"), "error");
+    return;
+  }
+  $("#tagsInput").value = text;
+  renderTagSuggest();
 }
 
 function renderTable() {
@@ -647,6 +696,7 @@ function openEditor(id = null, mode = id ? "edit" : "create") {
 
   setActivePasteField(null);
   renderAllUploads();
+  renderTagSuggest();
   $("#editorOverlay").hidden = false;
   if (isCompletion) {
     setTimeout(() => {
@@ -1079,6 +1129,20 @@ function bindEvents() {
   ["#categoryFilter", "#statusFilter", "#sortSelect"].forEach((selector) => {
     $(selector).addEventListener("change", reloadFromFirstPage);
   });
+  $("#tagBarList").addEventListener("click", (event) => {
+    const chip = event.target.closest("button[data-tag]");
+    if (!chip) return;
+    const tag = chip.dataset.tag;
+    const input = $("#searchInput");
+    input.value = input.value.trim().toLowerCase() === tag.toLowerCase() ? "" : tag;
+    renderTagBar();
+    reloadFromFirstPage();
+  });
+  $("#tagSuggest").addEventListener("click", (event) => {
+    const chip = event.target.closest("button[data-tag]");
+    if (chip) toggleEditorTag(chip.dataset.tag);
+  });
+  $("#tagsInput").addEventListener("input", renderTagSuggest);
   $("#resetFilterBtn").addEventListener("click", () => {
     $("#searchInput").value = "";
     $("#categoryFilter").value = "";

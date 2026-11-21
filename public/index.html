@@ -93,6 +93,10 @@
           <button class="btn btn-text" id="resetFilterBtn" type="button" data-i18n="filter.reset">重置</button>
           <span class="result-count" id="resultCount">0 项</span>
         </div>
+        <div class="tag-bar" id="tagBar" hidden>
+          <span class="tag-bar-label" data-i18n="tags.popular">常用标签</span>
+          <div class="tag-chips" id="tagBarList"></div>
+        </div>
 
         <div class="table-scroll" id="tableView">
           <table class="asset-table">
@@ -181,10 +185,11 @@
             <span data-i18n="editor.status">状态</span>
             <div class="status-readonly" id="statusReadonly">待制作</div>
           </div>
-          <label class="field">
-            <span data-i18n="editor.tags">标签</span>
+          <div class="field field-wide">
+            <label for="tagsInput" data-i18n="editor.tags">标签</label>
             <input id="tagsInput" name="tags" maxlength="240" data-i18n-placeholder="editor.tagsPlaceholder" placeholder="用逗号分隔，例如：科幻, 硬表面, PBR">
-          </label>
+            <div class="tag-chips tag-suggest" id="tagSuggest" hidden></div>
+          </div>
           <label class="field field-wide">
             <span data-i18n="editor.description">描述</span>
             <textarea id="descriptionInput" name="description" maxlength="2000" rows="3" data-i18n-placeholder="editor.descriptionPlaceholder" placeholder="补充用途、版本、备注等信息"></textarea>
