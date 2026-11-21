@@ -6,8 +6,11 @@ Never put a literal `?` or `%` inside SQL text — pass such values as parameter
 """
 from __future__ import annotations
 
+import atexit
+import os
 import sqlite3
 import threading
+import time
 from typing import Any, Iterable
 
 from flask import g
@@ -59,30 +62,79 @@ class Database:
 
     def close(self):
         try:
-            self.conn.close()
+            if self.pool is not None:
+                self.pool.putconn(self.conn)  # back to the pool; rolled back if needed
+            else:
+                self.conn.close()
         except Exception:
             pass
 
+    pool = None
 
-def connect() -> Database:
+
+# Postgres connections are expensive to open (TCP + TLS + auth = several round trips),
+# so each serverless instance keeps a small pool and reuses connections across requests.
+_pool = None
+_pool_lock = threading.Lock()
+
+
+def _pg_kwargs() -> dict:
+    from psycopg.rows import dict_row
+
+    # prepare_threshold=None: no server-side prepared statements, safe behind PgBouncer
+    # (Neon's pooled endpoint runs in transaction mode).
+    return {"row_factory": dict_row, "connect_timeout": 10, "prepare_threshold": None}
+
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                from psycopg_pool import ConnectionPool
+
+                _pool = ConnectionPool(
+                    config.DATABASE_URL,
+                    min_size=0,
+                    max_size=int(os.environ.get("DB_POOL_SIZE", "4")),
+                    kwargs=_pg_kwargs(),
+                    check=ConnectionPool.check_connection,  # drop connections that went stale while frozen
+                    max_idle=240,
+                    max_lifetime=1800,
+                    timeout=15,
+                    open=True,
+                    name="vault",
+                )
+                atexit.register(_pool.close)
+    return _pool
+
+
+def connect(pooled: bool = False) -> Database:
+    """Open a database handle. Request handlers use the pool; scripts use a direct connection."""
     if IS_PG:
-        import psycopg
-        from psycopg.rows import dict_row
+        if pooled:
+            pool = _get_pool()
+            db = Database(pool.getconn())
+            db.pool = pool
+        else:
+            import psycopg
 
-        conn = psycopg.connect(config.DATABASE_URL, row_factory=dict_row, connect_timeout=10)
+            db = Database(psycopg.connect(config.DATABASE_URL, **_pg_kwargs()))
     else:
         config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(SQLITE_PATH, timeout=15)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-    db = Database(conn)
+        db = Database(conn)
     ensure_schema(db)
     return db
 
 
 def get_db() -> Database:
     if "db" not in g:
-        g.db = connect()
+        started = time.perf_counter()
+        g.db = connect(pooled=True)
+        g.db_connect_ms = (time.perf_counter() - started) * 1000
     return g.db
 
 

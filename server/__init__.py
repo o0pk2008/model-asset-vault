@@ -1,6 +1,7 @@
 """POLYMODEL-Vault online edition — Flask application factory."""
 from __future__ import annotations
 
+import time
 from datetime import timedelta
 
 from flask import Flask, g, jsonify, request, send_from_directory
@@ -38,6 +39,7 @@ def create_app() -> Flask:
     def before_api():
         if not request.path.startswith("/api/"):
             return None
+        g.request_started = time.perf_counter()
         # CSRF protection: state-changing API calls must carry a custom header, which
         # browsers refuse to send cross-site without a CORS preflight we never allow.
         if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("X-Requested-With") != "ModelVault":
@@ -51,6 +53,14 @@ def create_app() -> Flask:
         response.headers.setdefault("Referrer-Policy", "same-origin")
         if request.path.startswith("/api/") and "Cache-Control" not in response.headers:
             response.headers["Cache-Control"] = "no-store"
+        started = g.get("request_started")
+        if started is not None:
+            # Visible in the browser's DevTools (Network → Timing) to see where time goes.
+            timings = []
+            if "db_connect_ms" in g:
+                timings.append(f"db-connect;dur={g.db_connect_ms:.1f}")
+            timings.append(f"app;dur={(time.perf_counter() - started) * 1000:.1f}")
+            response.headers["Server-Timing"] = ", ".join(timings)
         return response
 
     @app.errorhandler(ApiError)
