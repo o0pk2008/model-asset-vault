@@ -68,6 +68,7 @@
       <section class="stats" id="stats" aria-label="资产统计"></section>
 
       <section class="panel">
+        <div class="method-tabs" id="methodTabs" role="tablist" aria-label="制作方式"></div>
         <div class="toolbar">
           <div class="search-box">
             <span class="search-icon" aria-hidden="true">⌕</span>
@@ -97,11 +98,21 @@
           <span class="tag-bar-label" data-i18n="tags.popular">常用标签</span>
           <div class="tag-chips" id="tagBarList"></div>
         </div>
+        <div class="batch-bar" id="batchBar" hidden>
+          <span class="batch-info" id="batchInfo"></span>
+          <div class="batch-actions">
+            <button class="btn btn-mini" type="button" data-batch-method="ai" data-i18n="batch.setAi">设为 AI 生成</button>
+            <button class="btn btn-mini" type="button" data-batch-method="manual" data-i18n="batch.setManual">设为手动建模</button>
+            <button class="btn btn-mini" type="button" data-batch-method="hybrid" data-i18n="batch.setHybrid">设为 AI + 人工修整</button>
+            <button class="btn btn-text" type="button" id="batchClearBtn" data-i18n="batch.clear">取消选择</button>
+          </div>
+        </div>
 
         <div class="table-scroll" id="tableView">
           <table class="asset-table">
             <thead>
               <tr>
+                <th class="col-check" id="selectAllCell" hidden><input type="checkbox" id="selectAllBox" aria-label="Select all"></th>
                 <th class="col-media" data-i18n="table.photo">参考照片</th>
                 <th class="col-media" data-i18n="table.screenshot">制作截图</th>
                 <th class="col-name" data-i18n="table.info">资产信息</th>
@@ -168,6 +179,19 @@
             <span><span data-i18n="editor.name">模型名称</span> <em>*</em></span>
             <input id="nameInput" name="name" maxlength="120" data-i18n-placeholder="editor.namePlaceholder" placeholder="例如：工业机械臂 A-01" required>
           </label>
+          <div class="field field-wide" id="methodField">
+            <span><span data-i18n="method.label">制作方式</span> <em>*</em></span>
+            <div class="method-picker" id="methodPicker" role="radiogroup" aria-label="制作方式">
+              <button type="button" role="radio" aria-checked="false" data-method="ai"><b data-i18n="method.ai">AI 生成</b><small data-i18n="method.aiDesc">图生 3D 等 AI 工具直接生成</small></button>
+              <button type="button" role="radio" aria-checked="false" data-method="manual"><b data-i18n="method.manual">手动建模</b><small data-i18n="method.manualDesc">建模师在 Blender、3ds Max、Maya 等软件中完成</small></button>
+              <button type="button" role="radio" aria-checked="false" data-method="hybrid"><b data-i18n="method.hybrid">AI + 人工修整</b><small data-i18n="method.hybridDesc">AI 生成后人工修拓扑、贴图或细节</small></button>
+            </div>
+            <label class="ai-tool-row" id="aiToolRow" hidden>
+              <span data-i18n="method.aiTool">AI 工具（选填）</span>
+              <input id="aiToolInput" name="ai_tool" maxlength="80" list="aiToolOptions" data-i18n-placeholder="method.aiToolPlaceholder" placeholder="记录使用的 AI 生成工具，便于对比效果">
+              <datalist id="aiToolOptions"></datalist>
+            </label>
+          </div>
           <label class="field">
             <span data-i18n="editor.code">资产编号</span>
             <input id="codeInput" name="code" maxlength="80" data-i18n-placeholder="editor.codePlaceholder" placeholder="例如：MDL-001">

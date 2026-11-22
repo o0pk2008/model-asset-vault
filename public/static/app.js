@@ -33,6 +33,9 @@ const state = {
   viewMode: localStorage.getItem("asset_view") === "card" ? "card" : "table",
   cardObserver: null,
   compressing: {},
+  method: "",
+  editMethod: null,
+  selected: new Set(),
   page: 1,
   pageSize: savedPageSize(),
   pagination: null,
@@ -77,6 +80,9 @@ function setLanguage(lang) {
   renderFilterOptions();
   renderAssets();
   renderPager();
+  renderMethodTabs();
+  renderBatchBar();
+  renderMethodPicker();
   renderUser();
   if (!$("#editorOverlay").hidden) refreshEditorLabels();
   if (!$("#detailOverlay").hidden && state.detailId) openDetail(state.detailId);
@@ -176,6 +182,7 @@ function currentQuery() {
   if (category) params.set("category", category);
   if (status) params.set("status", status);
   params.set("sort", sort);
+  if (state.method) params.set("method", state.method);
   params.set("page", String(state.page));
   params.set("page_size", String(state.pageSize));
   return params;
@@ -240,7 +247,10 @@ async function loadAssets() {
     state.stats = data.stats || {};
     state.pagination = data.pagination || null;
     if (state.pagination) state.page = state.pagination.page;
+    state.selected.clear();
     renderPager();
+    renderMethodTabs();
+    renderBatchBar();
     state.storage = data.storage || "s3";
     $("#storageBanner").hidden = state.storage !== "none";
     renderStats();
@@ -254,7 +264,12 @@ async function loadAssets() {
 function renderStats() {
   const stats = state.stats;
   const cards = [
-    { label: t("stat.total"), value: stats.total ?? 0, note: t("stat.totalNote"), color: "var(--primary-soft)" },
+    {
+      label: t("stat.total"),
+      value: stats.total ?? 0,
+      note: stats.methods ? t("stat.methodNote", stats.methods) : t("stat.totalNote"),
+      color: "var(--primary-soft)",
+    },
     { label: t("stat.pending"), value: stats.pending ?? 0, note: t("stat.pendingNote"), color: "#eef1f7" },
     { label: t("stat.completed"), value: stats.completed ?? 0, note: t("stat.completedNote"), color: "var(--accent-soft)" },
     { label: t("stat.size"), value: formatBytes(stats.totalSize), note: t("stat.sizeNote"), color: "var(--warning-soft)" },
@@ -283,6 +298,67 @@ function renderFilterOptions() {
     .map((category) => `<option value="${escapeHtml(category)}"></option>`)
     .join("");
   renderTagBar();
+}
+
+const METHODS = ["ai", "manual", "hybrid"];
+
+function methodBadge(method) {
+  const key = METHODS.includes(method) ? method : "ai";
+  return `<span class="method-badge" data-method="${key}" title="${escapeHtml(t(`method.${key}`))}">${escapeHtml(t(`method.short.${key}`))}</span>`;
+}
+
+// Tabs above the toolbar: 全部 / AI 生成 / 手动建模 / AI + 人工修整, with counts.
+function renderMethodTabs() {
+  const counts = state.stats.methods || {};
+  const tabs = [["", t("method.all"), state.stats.total ?? 0], ...METHODS.map((m) => [m, t(`method.${m}`), counts[m] || 0])];
+  $("#methodTabs").innerHTML = tabs
+    .map(([value, label, count]) => {
+      const active = value === state.method;
+      return `<button type="button" role="tab" aria-selected="${active}" class="method-tab ${active ? "active" : ""}" data-method="${value}">${value ? `<span class="method-dot" data-method="${value}"></span>` : ""}${escapeHtml(label)}<span class="method-count">${count}</span></button>`;
+    })
+    .join("");
+}
+
+function canBatch() {
+  return can("edit") && state.viewMode === "table";
+}
+
+function renderBatchBar() {
+  const count = state.selected.size;
+  $("#batchBar").hidden = !canBatch() || count === 0;
+  $("#batchInfo").textContent = t("batch.selected", { count });
+  const box = $("#selectAllBox");
+  if (box) {
+    const ids = state.items.map((item) => item.id);
+    const chosen = ids.filter((id) => state.selected.has(id)).length;
+    box.checked = ids.length > 0 && chosen === ids.length;
+    box.indeterminate = chosen > 0 && chosen < ids.length;
+  }
+}
+
+async function applyBatchMethod(method) {
+  const ids = [...state.selected];
+  if (!ids.length) return;
+  try {
+    const result = await apiFetch("/api/assets/batch-method", { method: "POST", json: { ids, method } });
+    toast(t("batch.done", { count: result.updated, method: t(`method.${method}`) }));
+    await loadAssets();
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+function renderMethodPicker() {
+  const method = state.editMethod;
+  $$("#methodPicker button[data-method]").forEach((button) => {
+    const active = button.dataset.method === method;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", String(active));
+  });
+  $("#aiToolRow").hidden = !method || method === "manual";
+  $("#aiToolOptions").innerHTML = (state.stats.aiTools || [])
+    .map((tool) => `<option value="${escapeHtml(tool)}"></option>`)
+    .join("");
 }
 
 function splitTags(text) {
@@ -348,6 +424,8 @@ function renderTable() {
   const editLabel = t("common.edit");
   const downloadLabel = t("common.download");
   const deleteLabel = t("common.delete");
+  const batch = canBatch();
+  $("#selectAllCell").hidden = !batch;
 
   tbody.innerHTML = items
     .map((item) => {
@@ -363,7 +441,8 @@ function renderTable() {
         .filter(Boolean)
         .join(" · ");
       return `
-        <tr>
+        <tr class="${state.selected.has(item.id) ? "selected" : ""}">
+          ${batch ? `<td class="col-check"><input type="checkbox" data-select="${item.id}" aria-label="Select" ${state.selected.has(item.id) ? "checked" : ""}></td>` : ""}
           <td>${mediaCell(item.photo_url, previewLabel)}</td>
           <td>${mediaCell(item.screenshot_url, screenshotLabel)}</td>
           <td>
@@ -374,7 +453,7 @@ function renderTable() {
             <div class="category-text">${item.category ? escapeHtml(item.category) : `<span class="muted">${t("table.uncategorized")}</span>`}</div>
             ${tags.length ? `<div class="tag-list">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
           </td>
-          <td><span class="status-chip" data-status="${escapeHtml(item.status)}">${escapeHtml(I18N.status(item.status))}</span></td>
+          <td><div class="status-stack">${methodBadge(item.method)}<span class="status-chip" data-status="${escapeHtml(item.status)}">${escapeHtml(I18N.status(item.status))}</span></div></td>
           <td>
             ${
               item.glb_url
@@ -448,7 +527,7 @@ function renderCards() {
             <h3 class="card-title" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h3>
             <div class="card-meta">${item.code ? escapeHtml(item.code) : t("table.unnumbered")} · ${formatBytes(item.glb_size)}</div>
             <div class="card-row">
-              <span class="status-chip" data-status="${escapeHtml(item.status)}">${escapeHtml(I18N.status(item.status))}</span>
+              <span class="status-stack">${methodBadge(item.method)}<span class="status-chip" data-status="${escapeHtml(item.status)}">${escapeHtml(I18N.status(item.status))}</span></span>
               <span class="card-time">${escapeHtml(item.updated_at || "")}</span>
             </div>
             ${tags.length ? `<div class="tag-list">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
@@ -662,6 +741,8 @@ function openEditor(id = null, mode = id ? "edit" : "create") {
     $("#categoryInput").value = asset.category || "";
     $("#creatorInput").value = asset.creator || "";
     $("#tagsInput").value = asset.tags || "";
+    state.editMethod = asset.method || "ai";
+    $("#aiToolInput").value = asset.ai_tool || "";
     $("#descriptionInput").value = asset.description || "";
     state.existing = {
       photo_url: asset.photo_url || "",
@@ -692,11 +773,13 @@ function openEditor(id = null, mode = id ? "edit" : "create") {
     $("#assetId").value = "";
     $("#creatorInput").value = "";
     applyCreateDefaults();
+    state.editMethod = null; // a new task must choose 制作方式 explicitly
   }
 
   setActivePasteField(null);
   renderAllUploads();
   renderTagSuggest();
+  renderMethodPicker();
   $("#editorOverlay").hidden = false;
   if (isCompletion) {
     setTimeout(() => {
@@ -978,8 +1061,17 @@ async function saveAsset() {
     return;
   }
 
+  if (mode !== "completion" && !state.editMethod) {
+    toast(t("method.required"), "error");
+    $("#methodField").scrollIntoView({ behavior: "smooth", block: "center" });
+    $("#methodPicker").classList.add("invalid");
+    return;
+  }
+
   const payload = {};
   if (mode !== "completion") {
+    payload.method = state.editMethod;
+    payload.ai_tool = state.editMethod === "manual" ? "" : $("#aiToolInput").value.trim();
     payload.name = $("#nameInput").value.trim();
     payload.code = $("#codeInput").value.trim();
     payload.creator = $("#creatorInput").value.trim();
@@ -1054,6 +1146,8 @@ function openDetail(id) {
     <div class="info-list">
       <div class="info-row"><span>${t("detail.category")}</span><span>${escapeHtml(asset.category || t("table.uncategorized"))}</span></div>
       <div class="info-row"><span>${t("table.status")}</span><span>${escapeHtml(I18N.status(asset.status))}</span></div>
+      <div class="info-row"><span>${t("method.label")}</span><span>${methodBadge(asset.method)} ${escapeHtml(t(`method.${METHODS.includes(asset.method) ? asset.method : "ai"}`))}</span></div>
+      ${asset.ai_tool ? `<div class="info-row"><span>${t("detail.aiTool")}</span><span>${escapeHtml(asset.ai_tool)}</span></div>` : ""}
       <div class="info-row"><span>${t("detail.creator")}</span><span>${escapeHtml(asset.creator || t("common.unknown"))}</span></div>
       <div class="info-row"><span>${t("detail.maker")}</span><span>${escapeHtml(asset.maker || t("common.unknown"))}</span></div>
       <div class="info-row"><span>${t("detail.tags")}</span><span>${escapeHtml(asset.tags || t("common.none"))}</span></div>
@@ -1148,6 +1242,7 @@ function bindEvents() {
     $("#categoryFilter").value = "";
     $("#statusFilter").value = "";
     $("#sortSelect").value = "created_desc";
+    state.method = "";
     reloadFromFirstPage();
   });
   $("#pagerControls").addEventListener("click", (event) => {
@@ -1165,13 +1260,55 @@ function bindEvents() {
   });
 
   $("#assetTableBody").addEventListener("click", handleAssetAction);
+  $("#methodTabs").addEventListener("click", (event) => {
+    const tab = event.target.closest("button[data-method]");
+    if (!tab || tab.dataset.method === state.method) return;
+    state.method = tab.dataset.method;
+    renderMethodTabs();
+    reloadFromFirstPage();
+  });
+  $("#assetTableBody").addEventListener("change", (event) => {
+    const box = event.target.closest("input[data-select]");
+    if (!box) return;
+    const id = Number(box.dataset.select);
+    if (box.checked) state.selected.add(id);
+    else state.selected.delete(id);
+    box.closest("tr").classList.toggle("selected", box.checked);
+    renderBatchBar();
+  });
+  $("#selectAllBox").addEventListener("change", (event) => {
+    state.items.forEach((item) => {
+      if (event.target.checked) state.selected.add(item.id);
+      else state.selected.delete(item.id);
+    });
+    renderTable();
+    renderBatchBar();
+  });
+  $("#batchBar").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-batch-method]");
+    if (button) applyBatchMethod(button.dataset.batchMethod);
+  });
+  $("#batchClearBtn").addEventListener("click", () => {
+    state.selected.clear();
+    renderTable();
+    renderBatchBar();
+  });
+  $("#methodPicker").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-method]");
+    if (!button) return;
+    state.editMethod = button.dataset.method;
+    $("#methodPicker").classList.remove("invalid");
+    renderMethodPicker();
+  });
   $("#assetCardGrid").addEventListener("click", handleAssetAction);
   $("#viewSwitch").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (!button) return;
     state.viewMode = button.dataset.view === "card" ? "card" : "table";
     localStorage.setItem("asset_view", state.viewMode);
+    state.selected.clear();
     renderAssets();
+    renderBatchBar();
   });
 
   $("#editorModeSwitch").addEventListener("click", (event) => {

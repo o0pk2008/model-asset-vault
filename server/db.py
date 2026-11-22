@@ -191,6 +191,8 @@ SCHEMA = [
         glb_key TEXT,
         glb_name TEXT,
         glb_size BIGINT NOT NULL DEFAULT 0,
+        method TEXT NOT NULL DEFAULT 'ai',
+        ai_tool TEXT NOT NULL DEFAULT '',
         created_by INTEGER,
         updated_by INTEGER,
         created_at TEXT NOT NULL,
@@ -220,6 +222,24 @@ SCHEMA = [
     "CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs (created_at)",
 ]
 
+# Columns added after the first release: (table, column, definition). Existing rows get
+# the default, e.g. every asset created before 制作方式 existed counts as AI-generated.
+COLUMN_MIGRATIONS = [
+    ("assets", "method", "TEXT NOT NULL DEFAULT 'ai'"),
+    ("assets", "ai_tool", "TEXT NOT NULL DEFAULT ''"),
+]
+
+
+def ensure_columns(db: Database) -> None:
+    for table, column, definition in COLUMN_MIGRATIONS:
+        if IS_PG:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
+        else:
+            existing = {row["name"] for row in db.all(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_assets_method ON assets (method)")
+
 
 def ensure_schema(db: Database) -> None:
     global _schema_ready
@@ -236,6 +256,7 @@ def ensure_schema(db: Database) -> None:
             try:
                 for statement in SCHEMA:
                     db.execute(statement)
+                ensure_columns(db)
                 db.commit()
                 bootstrap_admin(db)
                 db.commit()

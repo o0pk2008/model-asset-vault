@@ -22,8 +22,12 @@ TEXT_LIMITS = {
     "description": 2000,
     "creator": 80,
     "maker": 80,
+    "ai_tool": 80,
 }
-OWNER_FIELDS = {"name", "code", "category", "tags", "description", "creator"}
+OWNER_FIELDS = {"name", "code", "category", "tags", "description", "creator", "ai_tool", "method"}
+# 制作方式: AI-generated, hand-modelled, or AI-generated then refined by hand.
+METHODS = ("ai", "manual", "hybrid")
+BATCH_LIMIT = 500
 POPULAR_TAG_LIMIT = 24
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
@@ -60,6 +64,13 @@ def asset_to_dict(row: dict) -> dict:
 
 def get_asset(asset_id: int) -> dict | None:
     return get_db().one("SELECT * FROM assets WHERE id = ?", (asset_id,))
+
+
+def method_value(value) -> str:
+    method = str(value or "").strip()
+    if method not in METHODS:
+        raise ApiError("请选择制作方式")
+    return method
 
 
 def text_value(data: dict, name: str) -> str:
@@ -107,22 +118,27 @@ def list_assets():
     status = (request.args.get("status") or "").strip()
     sort = request.args.get("sort") or "created_desc"
     mine = request.args.get("mine") == "1"
+    method = (request.args.get("method") or "").strip()
 
     clauses: list[str] = []
     params: list = []
     if query:
         clauses.append(
             "(LOWER(name) LIKE ? OR LOWER(code) LIKE ? OR LOWER(tags) LIKE ? "
-            "OR LOWER(description) LIKE ? OR LOWER(creator) LIKE ? OR LOWER(maker) LIKE ?)"
+            "OR LOWER(description) LIKE ? OR LOWER(creator) LIKE ? OR LOWER(maker) LIKE ? "
+            "OR LOWER(ai_tool) LIKE ?)"
         )
         like = f"%{query}%"
-        params.extend([like] * 6)
+        params.extend([like] * 7)
     if category:
         clauses.append("category = ?")
         params.append(category)
     if status:
         clauses.append("status = ?")
         params.append(status)
+    if method in METHODS:
+        clauses.append("method = ?")
+        params.append(method)
     if mine:
         clauses.append("created_by = ?")
         params.append(g.user["id"])
@@ -153,7 +169,10 @@ def list_assets():
     summary = db.one(
         "SELECT COUNT(*) AS total, "
         "SUM(CASE WHEN glb_key IS NOT NULL AND glb_key != '' THEN 1 ELSE 0 END) AS completed, "
-        "COALESCE(SUM(glb_size), 0) AS total_size FROM assets"
+        "COALESCE(SUM(glb_size), 0) AS total_size, "
+        "SUM(CASE WHEN method = 'ai' THEN 1 ELSE 0 END) AS method_ai, "
+        "SUM(CASE WHEN method = 'manual' THEN 1 ELSE 0 END) AS method_manual, "
+        "SUM(CASE WHEN method = 'hybrid' THEN 1 ELSE 0 END) AS method_hybrid FROM assets"
     ) or {}
     categories = [
         row["category"]
@@ -179,6 +198,11 @@ def list_assets():
         "categories": categories,
         "lastCreated": last_row,
         "popularTags": popular_tags,
+        "methods": {m: int(summary.get(f"method_{m}") or 0) for m in METHODS},
+        "aiTools": [
+            row["ai_tool"]
+            for row in db.all("SELECT DISTINCT ai_tool FROM assets WHERE ai_tool != '' ORDER BY ai_tool LIMIT 50")
+        ],
     }
     pagination = {"page": page, "pageSize": page_size, "total": filtered, "pages": pages}
     return jsonify({"items": items, "stats": stats, "pagination": pagination, "storage": storage_cfg()["backend"]})
@@ -266,14 +290,15 @@ def create_asset():
 
     now = config.now_text()
     glb_key = files["glb"][0]
+    create_method = method_value(data.get("method") or "ai")
     asset_id = get_db().insert(
         """
         INSERT INTO assets (
             name, code, category, status, tags, description, creator, maker,
             photo_key, photo_name, screenshot_key, screenshot_name,
-            glb_key, glb_name, glb_size, created_by, updated_by,
+            glb_key, glb_name, glb_size, method, ai_tool, created_by, updated_by,
             created_at, updated_at, completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             name,
@@ -291,6 +316,8 @@ def create_asset():
             glb_key,
             files["glb"][1],
             files["glb"][2],
+            create_method,
+            text_value(data, "ai_tool") if create_method != "manual" else "",
             g.user["id"],
             g.user["id"],
             now,
@@ -324,6 +351,9 @@ def update_asset(asset_id: int):
         values[field] = text_value(data, field)
     if not values["name"]:
         raise ApiError("请填写模型名称")
+    values["method"] = method_value(data["method"]) if "method" in data else existing["method"]
+    if values["method"] == "manual":
+        values["ai_tool"] = ""
 
     old_keys: list[str] = []
     for field in FILE_FIELDS:
@@ -353,7 +383,7 @@ def update_asset(asset_id: int):
         """
         UPDATE assets SET
             name = ?, code = ?, category = ?, status = ?, tags = ?, description = ?,
-            creator = ?, maker = ?,
+            creator = ?, maker = ?, method = ?, ai_tool = ?,
             photo_key = ?, photo_name = ?, screenshot_key = ?, screenshot_name = ?,
             glb_key = ?, glb_name = ?, glb_size = ?, completed_at = ?, updated_at = ?, updated_by = ?
         WHERE id = ?
@@ -367,6 +397,8 @@ def update_asset(asset_id: int):
             values["description"],
             values["creator"],
             values["maker"],
+            values["method"],
+            values["ai_tool"],
             values["photo"][0],
             values["photo"][1],
             values["screenshot"][0],
@@ -385,6 +417,31 @@ def update_asset(asset_id: int):
     detail = "上传 GLB" if glb_key and glb_key != existing["glb_key"] else ""
     log_action("asset.update", f"asset:{asset_id}", f"{values['name']} {detail}".strip())
     return jsonify(asset_to_dict(get_asset(asset_id)))
+
+
+@bp.post("/assets/batch-method")
+@permission_required("edit")
+def batch_set_method():
+    """Set 制作方式 for many assets at once (used to reclassify existing models)."""
+    data = body()
+    method = method_value(data.get("method"))
+    try:
+        ids = sorted({int(i) for i in data.get("ids") or []})
+    except (TypeError, ValueError):
+        raise ApiError("参数无效")
+    if not ids:
+        raise ApiError("请先选择资产")
+    if len(ids) > BATCH_LIMIT:
+        raise ApiError(f"一次最多修改 {BATCH_LIMIT} 条")
+    placeholders = ", ".join("?" for _ in ids)
+    ai_tool_sql = ", ai_tool = ''" if method == "manual" else ""
+    cursor = get_db().execute(
+        f"UPDATE assets SET method = ?, updated_by = ?{ai_tool_sql} WHERE id IN ({placeholders})",
+        (method, g.user["id"], *ids),
+    )
+    changed = cursor.rowcount
+    log_action("asset.batch_method", f"{changed} assets", f"method={method} ids={','.join(map(str, ids[:50]))}")
+    return jsonify({"updated": changed, "method": method})
 
 
 @bp.delete("/assets/<int:asset_id>")
