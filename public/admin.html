@@ -27,6 +27,7 @@
         <button type="button" data-section="overview" class="active"><span>◈</span><span data-i18n="adm.nav.overview">概览</span></button>
         <button type="button" data-section="users"><span>◉</span><span data-i18n="adm.nav.users">用户管理</span><span class="nav-badge" id="pendingBadge" hidden>0</span></button>
         <button type="button" data-section="storage"><span>▣</span><span data-i18n="adm.nav.storage">存储设置</span></button>
+        <button type="button" data-section="terms"><span>文</span><span data-i18n="adm.nav.terms">术语翻译</span><span class="nav-badge" id="termsBadge" hidden>0</span></button>
         <button type="button" data-section="system"><span>⚙</span><span data-i18n="adm.nav.system">系统设置</span></button>
         <button type="button" data-section="logs"><span>☰</span><span data-i18n="adm.nav.logs">操作日志</span></button>
       </nav>
@@ -176,6 +177,28 @@
       </section>
 
       <!-- logs -->
+      <section class="admin-section" data-panel="terms" hidden>
+        <h2 data-i18n="adm.nav.terms">术语翻译</h2>
+        <p class="section-desc" data-i18n="adm.terms.desc">标签和分类只需用中文录入。在这里为每个词填写一次英文名称，切换到英文界面时全平台自动显示英文；未翻译的词仍显示中文。</p>
+        <div class="admin-toolbar">
+          <div class="search-box">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="termSearch" type="search" data-i18n-placeholder="adm.terms.search" autocomplete="off">
+          </div>
+          <label class="term-filter"><input type="checkbox" id="termUntranslated"> <span data-i18n="adm.terms.onlyMissing">只看未翻译</span></label>
+          <span class="hint" id="termSummary"></span>
+          <span style="flex:1"></span>
+          <button class="btn btn-secondary" id="termSuggestBtn" type="button" data-i18n="adm.terms.suggest">填充建议</button>
+          <button class="btn btn-primary" id="termSaveBtn" type="button" data-i18n="adm.save">保存</button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table term-table">
+            <thead><tr><th data-i18n="adm.terms.term">中文（标准值）</th><th data-i18n="adm.terms.usage">使用次数</th><th data-i18n="adm.terms.en">英文显示名称</th></tr></thead>
+            <tbody id="termTable"></tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="admin-section" data-panel="logs" hidden>
         <h2 data-i18n="adm.nav.logs">操作日志</h2>
         <p class="section-desc" data-i18n="adm.logs.desc">记录登录、任务增删改、下载以及后台配置变更。</p>

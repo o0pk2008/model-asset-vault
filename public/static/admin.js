@@ -136,6 +136,25 @@ I18N.extend({
     "act.admin.storage_cors": "写入 CORS",
     "act.admin.storage_cleanup": "清理孤立文件",
     "act.admin.images_compress": "压缩已有图片",
+    "adm.nav.terms": "术语翻译",
+    "adm.terms.desc": "标签和分类只需用中文录入。在这里为每个词填写一次英文名称，切换到英文界面时全平台自动显示英文；未翻译的词仍显示中文。",
+    "adm.terms.search": "搜索中文或英文…",
+    "adm.terms.onlyMissing": "只看未翻译",
+    "adm.terms.summary": "共 {total} 个词，已翻译 {done} 个，未翻译 {missing} 个",
+    "adm.terms.suggest": "填充建议",
+    "adm.terms.suggested": "已为 {count} 个词填入建议译名，请检查后保存",
+    "adm.terms.noSuggest": "没有可自动填充的词，请手动填写",
+    "adm.terms.term": "中文（标准值）",
+    "adm.terms.usage": "使用次数",
+    "adm.terms.en": "英文显示名称",
+    "adm.terms.tag": "标签 {count}",
+    "adm.terms.category": "分类 {count}",
+    "adm.terms.placeholder": "未翻译，英文界面显示中文",
+    "adm.terms.saved": "已保存 {count} 处修改",
+    "adm.terms.nothing": "没有需要保存的修改",
+    "adm.terms.empty": "还没有任何标签或分类",
+    "adm.terms.unsaved": "有未保存的翻译，确定离开吗？",
+    "act.admin.terms": "修改术语翻译",
     "adm.images.title": "压缩已有图片",
     "adm.images.desc": "把已上传的参考照片和制作截图统一缩小到不超过 1024×1024 并转为 WebP，加快列表和预览加载。原图会被替换，GLB 不受影响。",
     "adm.images.pending": "待压缩",
@@ -281,6 +300,25 @@ I18N.extend({
     "act.admin.storage_cors": "Applied CORS",
     "act.admin.storage_cleanup": "Cleaned up orphans",
     "act.admin.images_compress": "Compressed images",
+    "adm.nav.terms": "Term translations",
+    "adm.terms.desc": "Tags and categories are entered in Chinese only. Give each term an English name once here and the English UI shows it everywhere; untranslated terms stay in Chinese.",
+    "adm.terms.search": "Search Chinese or English…",
+    "adm.terms.onlyMissing": "Untranslated only",
+    "adm.terms.summary": "{total} terms, {done} translated, {missing} missing",
+    "adm.terms.suggest": "Fill suggestions",
+    "adm.terms.suggested": "Suggested names filled in for {count} term(s). Review, then save.",
+    "adm.terms.noSuggest": "No suggestions available; please fill in manually",
+    "adm.terms.term": "Chinese (stored value)",
+    "adm.terms.usage": "Usage",
+    "adm.terms.en": "English display name",
+    "adm.terms.tag": "Tag {count}",
+    "adm.terms.category": "Category {count}",
+    "adm.terms.placeholder": "Not translated; shown in Chinese",
+    "adm.terms.saved": "Saved {count} change(s)",
+    "adm.terms.nothing": "Nothing to save",
+    "adm.terms.empty": "No tags or categories yet",
+    "adm.terms.unsaved": "You have unsaved translations. Leave anyway?",
+    "act.admin.terms": "Updated term translations",
     "adm.images.title": "Compress existing images",
     "adm.images.desc": "Shrink uploaded reference photos and screenshots to at most 1024×1024 and convert them to WebP so lists and previews load faster. Originals are replaced; GLB files are untouched.",
     "adm.images.pending": "Pending",
@@ -304,6 +342,8 @@ const state = {
   settings: null,
   logPage: 1,
   logPages: 1,
+  terms: [],
+  termEdits: new Map(),
 };
 
 // ------------------------------------------------------------------ utils
@@ -394,6 +434,123 @@ function applyI18n() {
 
 // ------------------------------------------------------------------ navigation
 
+// ------------------------------------------------------------------ term translations
+
+// Built-in suggestions for common 3D asset terms. "填充建议" only fills empty fields.
+const TERM_GLOSSARY = {
+  "角色": "Character", "人物": "Character", "人形": "Humanoid", "生物": "Creature", "怪物": "Monster",
+  "动物": "Animal", "宠物": "Pet", "机器人": "Robot", "机甲": "Mecha", "道具": "Prop", "武器": "Weapon",
+  "枪械": "Firearm", "刀剑": "Sword", "盔甲": "Armor", "装备": "Equipment", "工具": "Tool", "家具": "Furniture",
+  "椅子": "Chair", "桌子": "Table", "沙发": "Sofa", "床": "Bed", "柜子": "Cabinet", "灯具": "Lighting",
+  "电器": "Appliance", "电子产品": "Electronics", "厨具": "Kitchenware", "餐具": "Tableware", "容器": "Container",
+  "箱子": "Box", "瓶子": "Bottle", "食物": "Food", "饮料": "Drink", "水果": "Fruit", "植物": "Plant",
+  "树木": "Tree", "花卉": "Flower", "草": "Grass", "岩石": "Rock", "石头": "Stone", "地形": "Terrain",
+  "场景": "Scene", "环境": "Environment", "建筑": "Building", "房屋": "House", "室内": "Interior",
+  "室外": "Exterior", "城市": "City", "街道": "Street", "桥梁": "Bridge", "载具": "Vehicle", "车辆": "Vehicle",
+  "汽车": "Car", "卡车": "Truck", "摩托车": "Motorcycle", "自行车": "Bicycle", "飞机": "Aircraft",
+  "飞船": "Spaceship", "船": "Ship", "坦克": "Tank", "服装": "Clothing", "鞋子": "Shoes", "帽子": "Hat",
+  "饰品": "Accessory", "首饰": "Jewelry", "玩具": "Toy", "乐器": "Instrument", "运动": "Sports",
+  "医疗": "Medical", "工业": "Industrial", "机械": "Machinery", "机械臂": "Robotic arm", "零件": "Part",
+  "设备": "Device", "包装": "Packaging", "标志": "Sign", "雕塑": "Sculpture", "雕像": "Statue",
+  "艺术品": "Artwork", "装饰": "Decoration", "特效": "VFX", "粒子": "Particles",
+  "科幻": "Sci-fi", "奇幻": "Fantasy", "魔幻": "Fantasy", "中世纪": "Medieval", "古风": "Ancient Chinese",
+  "中国风": "Chinese style", "现代": "Modern", "未来": "Futuristic", "复古": "Retro", "赛博朋克": "Cyberpunk",
+  "蒸汽朋克": "Steampunk", "末日": "Post-apocalyptic", "军事": "Military", "写实": "Realistic",
+  "卡通": "Cartoon", "风格化": "Stylized", "二次元": "Anime", "Q版": "Chibi", "像素": "Pixel",
+  "体素": "Voxel", "手绘": "Hand-painted", "低多边形": "Low poly", "低模": "Low poly", "高模": "High poly",
+  "中模": "Mid poly", "硬表面": "Hard surface", "有机": "Organic", "雕刻": "Sculpted", "拓扑": "Topology",
+  "四边面": "Quad mesh", "三角面": "Triangulated", "PBR": "PBR", "贴图": "Textured", "材质": "Material",
+  "金属": "Metal", "木头": "Wood", "木质": "Wooden", "玻璃": "Glass", "塑料": "Plastic", "布料": "Fabric",
+  "皮革": "Leather", "陶瓷": "Ceramic", "混凝土": "Concrete", "绑定": "Rigged", "骨骼": "Skeleton",
+  "动画": "Animated", "可动": "Articulated", "游戏": "Game", "游戏资产": "Game asset", "影视": "Film",
+  "展示": "Showcase", "展厅": "Showroom", "电商": "E-commerce", "广告": "Advertising", "教育": "Education",
+  "数字人": "Digital human", "虚拟人": "Virtual human", "扫描": "Scanned", "照片建模": "Photogrammetry",
+  "待优化": "Needs optimization", "已优化": "Optimized", "参考": "Reference", "测试": "Test", "其他": "Other",
+};
+
+function termUsage(item) {
+  const parts = [];
+  if (item.tagCount) parts.push(t("adm.terms.tag", { count: item.tagCount }));
+  if (item.categoryCount) parts.push(t("adm.terms.category", { count: item.categoryCount }));
+  return parts.join(" · ") || "—";
+}
+
+function currentEn(item) {
+  return state.termEdits.has(item.term) ? state.termEdits.get(item.term) : item.en;
+}
+
+function pendingTermChanges() {
+  return (state.terms || [])
+    .filter((item) => state.termEdits.has(item.term) && state.termEdits.get(item.term) !== item.en)
+    .map((item) => ({ term: item.term, en: state.termEdits.get(item.term) }));
+}
+
+function renderTermSummary() {
+  const items = state.terms || [];
+  const done = items.filter((item) => currentEn(item)).length;
+  $("#termSummary").textContent = t("adm.terms.summary", { total: items.length, done, missing: items.length - done });
+  const missingSaved = items.filter((item) => !item.en).length;
+  $("#termsBadge").hidden = !missingSaved;
+  $("#termsBadge").textContent = missingSaved;
+}
+
+function renderTerms() {
+  const query = $("#termSearch").value.trim().toLowerCase();
+  const onlyMissing = $("#termUntranslated").checked;
+  const rows = (state.terms || []).filter((item) => {
+    const en = currentEn(item);
+    if (onlyMissing && en) return false;
+    return !query || item.term.toLowerCase().includes(query) || en.toLowerCase().includes(query);
+  });
+  $("#termTable").innerHTML = rows.length
+    ? rows
+        .map(
+          (item) => `<tr class="${currentEn(item) ? "" : "term-missing"}">
+            <td><strong>${escapeHtml(item.term)}</strong></td>
+            <td class="muted">${escapeHtml(termUsage(item))}</td>
+            <td><input class="term-input" data-term="${escapeHtml(item.term)}" maxlength="80" value="${escapeHtml(currentEn(item))}" placeholder="${escapeHtml(t("adm.terms.placeholder"))}"></td>
+          </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="3" class="empty">${t("adm.terms.empty")}</td></tr>`;
+  renderTermSummary();
+}
+
+async function loadTerms() {
+  const data = await guard(null, () => api("/api/admin/terms"));
+  if (!data) return;
+  state.terms = data.items;
+  state.termEdits = new Map();
+  renderTerms();
+}
+
+function suggestTerms() {
+  let count = 0;
+  (state.terms || []).forEach((item) => {
+    if (currentEn(item)) return;
+    const suggestion = TERM_GLOSSARY[item.term] || (/^[\x20-\x7e]+$/.test(item.term) ? item.term : "");
+    if (suggestion) {
+      state.termEdits.set(item.term, suggestion);
+      count += 1;
+    }
+  });
+  renderTerms();
+  toast(count ? t("adm.terms.suggested", { count }) : t("adm.terms.noSuggest"), count ? "success" : "error");
+}
+
+async function saveTerms() {
+  const items = pendingTermChanges();
+  if (!items.length) {
+    toast(t("adm.terms.nothing"));
+    return;
+  }
+  await guard($("#termSaveBtn"), async () => {
+    const result = await api("/api/admin/terms", { method: "PUT", json: { items } });
+    toast(t("adm.terms.saved", { count: result.updated }));
+    await loadTerms();
+  });
+}
+
 function showSection(section) {
   state.section = section;
   $$("#adminNav button").forEach((button) => button.classList.toggle("active", button.dataset.section === section));
@@ -401,7 +558,7 @@ function showSection(section) {
     panel.hidden = panel.dataset.panel !== section;
   });
   history.replaceState(null, "", `#${section}`);
-  ({ overview: loadOverview, users: loadUsers, storage: loadSettings, system: loadSettings, logs: loadLogs })[section]?.();
+  ({ overview: loadOverview, users: loadUsers, storage: loadSettings, system: loadSettings, terms: loadTerms, logs: loadLogs })[section]?.();
 }
 
 // ------------------------------------------------------------------ overview
@@ -818,6 +975,22 @@ function bindEvents() {
   $("#cleanupBtn").addEventListener("click", cleanup);
   $("#compressImagesBtn").addEventListener("click", compressImages);
   $("#saveSystemBtn").addEventListener("click", saveSystem);
+  $("#termTable").addEventListener("input", (event) => {
+    const input = event.target.closest("input[data-term]");
+    if (!input) return;
+    state.termEdits.set(input.dataset.term, input.value.trim());
+    renderTermSummary();
+  });
+  $("#termSearch").addEventListener("input", renderTerms);
+  $("#termUntranslated").addEventListener("change", renderTerms);
+  $("#termSuggestBtn").addEventListener("click", suggestTerms);
+  $("#termSaveBtn").addEventListener("click", saveTerms);
+  window.addEventListener("beforeunload", (event) => {
+    if (pendingTermChanges().length) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
 
   $("#logSearch").addEventListener("input", () => {
     clearTimeout(timer);
@@ -865,7 +1038,7 @@ async function boot() {
   document.body.classList.remove("booting");
   bindEvents();
   const initial = location.hash.slice(1);
-  showSection(["overview", "users", "storage", "system", "logs"].includes(initial) ? initial : "overview");
+  showSection(["overview", "users", "storage", "terms", "system", "logs"].includes(initial) ? initial : "overview");
   if (initial !== "overview") loadOverview();
 }
 

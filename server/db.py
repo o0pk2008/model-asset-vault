@@ -218,6 +218,13 @@ SCHEMA = [
         created_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS term_translations (
+        term TEXT PRIMARY KEY,
+        en TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_assets_updated ON assets (updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs (created_at)",
 ]

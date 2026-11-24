@@ -83,6 +83,7 @@ function setLanguage(lang) {
   renderMethodTabs();
   renderBatchBar();
   renderMethodPicker();
+  renderTagSuggest();
   renderUser();
   if (!$("#editorOverlay").hidden) refreshEditorLabels();
   if (!$("#detailOverlay").hidden && state.detailId) openDetail(state.detailId);
@@ -291,7 +292,7 @@ function renderFilterOptions() {
   const categorySelect = $("#categoryFilter");
   const previous = categorySelect.value;
   categorySelect.innerHTML = `<option value="">${t("filter.categoryAll")}</option>${categories
-    .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
+    .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(termLabel(category))}</option>`)
     .join("")}`;
   categorySelect.value = categories.includes(previous) ? previous : "";
   $("#categoryOptions").innerHTML = categories
@@ -361,6 +362,24 @@ function renderMethodPicker() {
     .join("");
 }
 
+// 术语翻译: tags and categories are stored in Chinese; the English UI shows the
+// admin-maintained English name when one exists, otherwise the original text.
+function termLabel(term) {
+  const text = String(term ?? "");
+  if (I18N.current !== "en") return text;
+  return (state.stats.terms || {})[text] || text;
+}
+
+function termHtml(term) {
+  const label = termLabel(term);
+  const title = label !== term ? ` title="${escapeHtml(term)}"` : "";
+  return `<span${title}>${escapeHtml(label)}</span>`;
+}
+
+function tagListHtml(text) {
+  return splitTags(text).map(termLabel).join(", ");
+}
+
 function splitTags(text) {
   return String(text || "")
     .split(/[,，]/)
@@ -375,8 +394,10 @@ function renderTagBar() {
   const current = $("#searchInput").value.trim().toLowerCase();
   $("#tagBarList").innerHTML = tags
     .map(({ tag, count }) => {
-      const active = tag.toLowerCase() === current;
-      return `<button type="button" class="tag-chip ${active ? "active" : ""}" data-tag="${escapeHtml(tag)}" aria-pressed="${active}">${escapeHtml(tag)}<small>${count}</small></button>`;
+      const label = termLabel(tag);
+      const active = tag.toLowerCase() === current || label.toLowerCase() === current;
+      const title = label !== tag ? ` title="${escapeHtml(tag)}"` : "";
+      return `<button type="button" class="tag-chip ${active ? "active" : ""}" data-tag="${escapeHtml(tag)}" data-label="${escapeHtml(label)}" aria-pressed="${active}"${title}>${escapeHtml(label)}<small>${count}</small></button>`;
     })
     .join("");
 }
@@ -390,7 +411,9 @@ function renderTagSuggest() {
   box.innerHTML = tags
     .map(({ tag }) => {
       const active = chosen.has(tag.toLowerCase());
-      return `<button type="button" class="tag-chip ${active ? "active" : ""}" data-tag="${escapeHtml(tag)}" aria-pressed="${active}">${escapeHtml(tag)}</button>`;
+      const label = termLabel(tag);
+      const title = label !== tag ? ` title="${escapeHtml(tag)}"` : "";
+      return `<button type="button" class="tag-chip ${active ? "active" : ""}" data-tag="${escapeHtml(tag)}" aria-pressed="${active}"${title}>${escapeHtml(label)}</button>`;
     })
     .join("");
 }
@@ -450,8 +473,8 @@ function renderTable() {
             <div class="asset-code">${item.code ? escapeHtml(item.code) : t("table.unnumbered")}${people ? ` · ${escapeHtml(people)}` : ""}</div>
           </td>
           <td>
-            <div class="category-text">${item.category ? escapeHtml(item.category) : `<span class="muted">${t("table.uncategorized")}</span>`}</div>
-            ${tags.length ? `<div class="tag-list">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
+            <div class="category-text">${item.category ? termHtml(item.category) : `<span class="muted">${t("table.uncategorized")}</span>`}</div>
+            ${tags.length ? `<div class="tag-list">${tags.map((tag) => `<span class="tag"${termLabel(tag) !== tag ? ` title="${escapeHtml(tag)}"` : ""}>${escapeHtml(termLabel(tag))}</span>`).join("")}</div>` : ""}
           </td>
           <td><div class="status-stack">${methodBadge(item.method)}<span class="status-chip" data-status="${escapeHtml(item.status)}">${escapeHtml(I18N.status(item.status))}</span></div></td>
           <td>
@@ -530,7 +553,7 @@ function renderCards() {
               <span class="status-stack">${methodBadge(item.method)}<span class="status-chip" data-status="${escapeHtml(item.status)}">${escapeHtml(I18N.status(item.status))}</span></span>
               <span class="card-time">${escapeHtml(item.updated_at || "")}</span>
             </div>
-            ${tags.length ? `<div class="tag-list">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
+            ${tags.length ? `<div class="tag-list">${tags.map((tag) => `<span class="tag"${termLabel(tag) !== tag ? ` title="${escapeHtml(tag)}"` : ""}>${escapeHtml(termLabel(tag))}</span>`).join("")}</div>` : ""}
           </div>
           <div class="card-footer">
             <button class="action-btn view" type="button" data-action="view" data-id="${item.id}" title="${viewLabel}" aria-label="${viewLabel}">${ICONS.view}</button>
@@ -762,7 +785,7 @@ function openEditor(id = null, mode = id ? "edit" : "create") {
       $("#completionReferenceMeta").innerHTML = [
         `${t("editor.number")}：${escapeHtml(asset.code || t("table.unnumbered"))}`,
         `${t("editor.creator")}：${escapeHtml(asset.creator || t("common.unknown"))}`,
-        `${t("editor.category")}：${escapeHtml(asset.category || t("table.uncategorized"))}`,
+        `${t("editor.category")}：${escapeHtml(asset.category ? termLabel(asset.category) : t("table.uncategorized"))}`,
         `${t("editor.requirements")}：${escapeHtml(asset.description || t("editor.noRequirements"))}`,
       ]
         .map((line) => `<div>${line}</div>`)
@@ -1144,13 +1167,13 @@ function openDetail(id) {
     <h3>${escapeHtml(asset.name)}</h3>
     <div class="info-code">${escapeHtml(asset.code || t("table.unnumbered"))}</div>
     <div class="info-list">
-      <div class="info-row"><span>${t("detail.category")}</span><span>${escapeHtml(asset.category || t("table.uncategorized"))}</span></div>
+      <div class="info-row"><span>${t("detail.category")}</span><span>${escapeHtml(asset.category ? termLabel(asset.category) : t("table.uncategorized"))}</span></div>
       <div class="info-row"><span>${t("table.status")}</span><span>${escapeHtml(I18N.status(asset.status))}</span></div>
       <div class="info-row"><span>${t("method.label")}</span><span>${methodBadge(asset.method)} ${escapeHtml(t(`method.${METHODS.includes(asset.method) ? asset.method : "ai"}`))}</span></div>
       ${asset.ai_tool ? `<div class="info-row"><span>${t("detail.aiTool")}</span><span>${escapeHtml(asset.ai_tool)}</span></div>` : ""}
       <div class="info-row"><span>${t("detail.creator")}</span><span>${escapeHtml(asset.creator || t("common.unknown"))}</span></div>
       <div class="info-row"><span>${t("detail.maker")}</span><span>${escapeHtml(asset.maker || t("common.unknown"))}</span></div>
-      <div class="info-row"><span>${t("detail.tags")}</span><span>${escapeHtml(asset.tags || t("common.none"))}</span></div>
+      <div class="info-row"><span>${t("detail.tags")}</span><span>${escapeHtml(tagListHtml(asset.tags) || t("common.none"))}</span></div>
       <div class="info-row"><span>${t("detail.glbSize")}</span><span>${formatBytes(asset.glb_size)}</span></div>
       <div class="info-row"><span>${t("detail.createdAt")}</span><span>${escapeHtml(asset.created_at)}</span></div>
       <div class="info-row"><span>${t("detail.completedAt")}</span><span>${escapeHtml(asset.completed_at || t("common.none"))}</span></div>
@@ -1227,8 +1250,10 @@ function bindEvents() {
     const chip = event.target.closest("button[data-tag]");
     if (!chip) return;
     const tag = chip.dataset.tag;
+    const label = chip.dataset.label || tag;
     const input = $("#searchInput");
-    input.value = input.value.trim().toLowerCase() === tag.toLowerCase() ? "" : tag;
+    const current = input.value.trim().toLowerCase();
+    input.value = current === tag.toLowerCase() || current === label.toLowerCase() ? "" : label;
     renderTagBar();
     reloadFromFirstPage();
   });

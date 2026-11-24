@@ -123,13 +123,22 @@ def list_assets():
     clauses: list[str] = []
     params: list = []
     if query:
-        clauses.append(
-            "(LOWER(name) LIKE ? OR LOWER(code) LIKE ? OR LOWER(tags) LIKE ? "
-            "OR LOWER(description) LIKE ? OR LOWER(creator) LIKE ? OR LOWER(maker) LIKE ? "
-            "OR LOWER(ai_tool) LIKE ?)"
-        )
         like = f"%{query}%"
-        params.extend([like] * 7)
+        search_sql = (
+            "LOWER(name) LIKE ? OR LOWER(code) LIKE ? OR LOWER(tags) LIKE ? "
+            "OR LOWER(description) LIKE ? OR LOWER(creator) LIKE ? OR LOWER(maker) LIKE ? "
+            "OR LOWER(ai_tool) LIKE ?"
+        )
+        search_params = [like] * 7
+        # English search in the English UI: map English names back to the stored Chinese terms.
+        for row in db.all(
+            "SELECT term FROM term_translations WHERE en != '' AND LOWER(en) LIKE ? LIMIT 20", (like,)
+        ):
+            term_like = f"%{row['term'].lower()}%"
+            search_sql += " OR LOWER(tags) LIKE ? OR LOWER(category) LIKE ?"
+            search_params += [term_like, term_like]
+        clauses.append(f"({search_sql})")
+        params.extend(search_params)
     if category:
         clauses.append("category = ?")
         params.append(category)
@@ -203,6 +212,8 @@ def list_assets():
             row["ai_tool"]
             for row in db.all("SELECT DISTINCT ai_tool FROM assets WHERE ai_tool != '' ORDER BY ai_tool LIMIT 50")
         ],
+        # 术语翻译: stored Chinese tag/category -> English display name.
+        "terms": {row["term"]: row["en"] for row in db.all("SELECT term, en FROM term_translations WHERE en != ''")},
     }
     pagination = {"page": page, "pageSize": page_size, "total": filtered, "pages": pages}
     return jsonify({"items": items, "stats": stats, "pagination": pagination, "storage": storage_cfg()["backend"]})

@@ -341,6 +341,66 @@ def storage_cleanup():
     return jsonify({"deleted": len(targets), "size": freed})
 
 
+# ------------------------------------------------------------------ term translations
+
+@bp.get("/terms")
+@admin_required
+def list_terms():
+    """Every tag and category in use, with usage counts and the saved English name."""
+    import re
+    from collections import Counter
+
+    db = get_db()
+    tag_counts: Counter = Counter()
+    category_counts: Counter = Counter()
+    for row in db.all("SELECT tags, category FROM assets"):
+        tag_counts.update({t.strip() for t in re.split(r"[,，]", row["tags"] or "") if t.strip()})
+        if (row["category"] or "").strip():
+            category_counts[row["category"].strip()] += 1
+    saved = {row["term"]: row["en"] for row in db.all("SELECT term, en FROM term_translations")}
+    terms = set(tag_counts) | set(category_counts) | {t for t, en in saved.items() if en}
+    items = [
+        {
+            "term": term,
+            "en": saved.get(term, ""),
+            "tagCount": tag_counts.get(term, 0),
+            "categoryCount": category_counts.get(term, 0),
+        }
+        for term in terms
+    ]
+    items.sort(key=lambda i: (-(i["tagCount"] + i["categoryCount"]), i["term"]))
+    return jsonify({"items": items})
+
+
+@bp.put("/terms")
+@admin_required
+def save_terms():
+    items = body().get("items")
+    if not isinstance(items, list) or len(items) > 2000:
+        raise ApiError("参数无效")
+    db = get_db()
+    now = config.now_text()
+    changed = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        term = str(item.get("term") or "").strip()[:80]
+        en = str(item.get("en") or "").strip()[:80]
+        if not term:
+            continue
+        if en:
+            db.execute(
+                "INSERT INTO term_translations (term, en, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT (term) DO UPDATE SET en = excluded.en, updated_at = excluded.updated_at",
+                (term, en, now),
+            )
+        else:
+            db.execute("DELETE FROM term_translations WHERE term = ?", (term,))
+        changed += 1
+    log_action("admin.terms", "terms", f"updated={changed}")
+    return jsonify({"updated": changed})
+
+
 # ------------------------------------------------------------------ image compression
 
 @bp.get("/images/status")
