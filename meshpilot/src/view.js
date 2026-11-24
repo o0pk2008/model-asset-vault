@@ -1,5 +1,24 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// Same neutral studio HDR as the asset library's 3D preview, so metallic and reflective
+// materials look the same in both. Falls back to a procedural room when it is unavailable
+// (e.g. running MeshPilot on its own).
+const ENVIRONMENT_URL = '/static/env/studio.hdr';
+
+async function applyEnvironment(views) {
+  let equirect = null;
+  try {
+    equirect = await new HDRLoader().loadAsync(ENVIRONMENT_URL);
+    equirect.mapping = THREE.EquirectangularReflectionMapping;
+  } catch (error) {
+    console.warn('Studio HDR unavailable, using a procedural environment.', error);
+  }
+  for (const view of views) view.setEnvironment(equirect);
+  equirect?.dispose();
+}
 
 const direction = new THREE.Vector3(0.25, 0.48, 1).normalize();
 
@@ -39,6 +58,7 @@ export function createViews(...stages) {
     }
   }
   fit();
+  applyEnvironment(views);
   return { before: views[0], after: views[1], fit };
 }
 
@@ -55,7 +75,8 @@ function createView(stage) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.minDistance = 0.15;
   controls.maxDistance = 24;
-  scene.add(new THREE.HemisphereLight(0xe6f8ff, 0x89988d, 2.25));
+  const hemisphere = new THREE.HemisphereLight(0xe6f8ff, 0x89988d, 2.25);
+  scene.add(hemisphere);
   const key = new THREE.DirectionalLight(0xfff4dc, 2.9);
   key.position.set(-3, 6, 4);
   const rim = new THREE.DirectionalLight(0x8df9e8, 1.4);
@@ -147,6 +168,21 @@ function createView(stage) {
     draw();
   }
 
+  // Image-based lighting: reflections need an environment, otherwise metals render black.
+  function setEnvironment(equirect) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const environment = equirect ? pmrem.fromEquirectangular(equirect).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    scene.environment?.dispose();
+    scene.environment = environment;
+    // The environment now provides most of the light; keep the lamps as soft fill and highlights.
+    renderer.toneMappingExposure = 1;
+    hemisphere.intensity = 0.55;
+    key.intensity = 1.6;
+    rim.intensity = 0.5;
+    draw();
+  }
+
   function setSplit(value) {
     split = value === null ? null : Math.min(1, Math.max(0, value));
     draw();
@@ -181,9 +217,10 @@ function createView(stage) {
   const observer = new ResizeObserver(resize);
   observer.observe(stage);
   resize();
-  return { camera, controls, draw, setModel, setSplit, setWireframe, setGeometryOnly, dispose() {
+  return { camera, controls, draw, setModel, setSplit, setEnvironment, setWireframe, setGeometryOnly, dispose() {
     observer.disconnect();
     controls.dispose();
+    scene.environment?.dispose();
     geometryMaterial.dispose();
     renderer.dispose();
     renderer.domElement.remove();
