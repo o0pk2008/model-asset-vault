@@ -65,6 +65,15 @@ const EXACT = {
   '环境光遮蔽': 'Ambient occlusion', '自发光': 'Emissive', '透明度': 'Alpha',
   '正在加载平台模型…': 'Loading model from the library…',
   'meshoptimizer 1.3.0 · 本地处理': 'meshoptimizer 1.3.0 · runs locally',
+  '减面方式': 'Reduction method',
+  '目标面数': 'Target triangles',
+  '导入模型后可用。': 'Available after loading a model.',
+  '简化结果 · 贴图对比': 'Simplified · texture comparison',
+  '压缩贴图': 'Compressed textures',
+  '拖动对比贴图': 'Drag to compare textures',
+  '正在应用所选贴图尺寸…': 'Applying the selected texture size…',
+  '请输入有效的目标面数。': 'Enter a valid target triangle count.',
+  '请先运行简化。': 'Run the simplification first.',
 };
 const PATTERNS = [
   [/^简化完成，实际保留 (.+?)。已受误差上限、网格结构或保护设置限制。$/, 'Done, kept $1. Limited by the error limit, mesh structure or protection settings.'],
@@ -78,6 +87,7 @@ const PATTERNS = [
   [/^已载入 (\d+) 张贴图，导出时保留可直接封装的原图。$/, '$1 texture(s) loaded; compatible originals are kept on export.'],
   [/^(.*) · 已用于导出$/, '$1 · used for export'],
   [/^(.+?) 顶点$/, '$1 vertices'],
+  [/^当前模型 (.+?) 个三角面$/, 'Current model: $1 triangles'],
   [/^原始 (.*)$/, 'Original $1'],
   [/^应用后 (.*)$/, 'Applied $1'],
 ];

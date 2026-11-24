@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#ecefe9" />
     <link rel="icon" href="data:," />
     <title>MeshPilot 网格实验台</title>
-    <script type="module" crossorigin src="/meshpilot/assets/index-B6ftm1xb.js"></script>
-    <link rel="stylesheet" crossorigin href="/meshpilot/assets/index-DLFy8oQt.css">
+    <script type="module" crossorigin src="/meshpilot/assets/index-C1nqpCmb.js"></script>
+    <link rel="stylesheet" crossorigin href="/meshpilot/assets/index-CRqDjO_X.css">
   </head>
   <body>
     <header class="topbar">
@@ -27,7 +27,7 @@
           </div>
           <div class="stages">
             <figure><div class="stage" id="before"><span class="stage-label"><i></i><span id="before-label">原始网格</span></span></div><figcaption><strong id="before-count">—</strong><span>三角面</span><span class="vertices" id="before-vertices"></span></figcaption></figure>
-            <figure><div class="stage result-stage" id="after"><span class="stage-label"><i></i><span id="after-label">简化结果</span></span></div><figcaption><strong id="after-count">—</strong><span>三角面</span><span class="vertices" id="after-vertices"></span></figcaption></figure>
+            <figure><div class="stage result-stage" id="after"><span class="stage-label"><i></i><span id="after-label">简化结果</span></span><div class="texture-split" id="texture-split" hidden><div class="texture-split-line" id="texture-split-line" role="separator" aria-orientation="vertical" aria-label="拖动对比贴图" tabindex="0"><span></span></div><span class="texture-split-tag left">原始贴图</span><span class="texture-split-tag right">压缩贴图</span></div></div><figcaption><strong id="after-count">—</strong><span>三角面</span><span class="vertices" id="after-vertices"></span></figcaption></figure>
           </div>
           <div class="comparison-foot"><span>拖动旋转 · 滚轮缩放 · 右键平移</span><span>视角同步</span></div>
           <section class="texture-panel" aria-labelledby="texture-title">
@@ -36,7 +36,7 @@
               <label for="texture-size">最长边</label>
               <select id="texture-size" disabled><option value="0">原始贴图</option><option value="512">512 px</option><option value="1024">1024 px</option><option value="2048">2048 px</option><option value="4096">4096 px</option></select>
               <label class="quality-control" for="texture-quality" title="用于不透明的颜色贴图。法线、材质数据和透明贴图使用 PNG。"><span>颜色质量</span><input id="texture-quality" type="range" min="40" max="100" value="85" disabled /><output id="texture-quality-value" for="texture-quality">85%</output></label>
-              <button type="button" id="texture-preview" disabled>预览并应用</button>
+              <button type="button" id="texture-preview" disabled hidden>预览并应用</button>
               <button type="button" id="texture-compare" aria-pressed="false" disabled>对比贴图效果</button>
             </div>
             <details id="texture-details" hidden>
@@ -55,8 +55,19 @@
             <label class="drop" id="drop" for="file"><span class="upload-icon" aria-hidden="true">↑</span><span><strong>导入模型</strong><small>点击或拖入 GLB、OBJ、STL</small></span></label>
             <input id="file" type="file" accept=".glb,.obj,.stl" class="visually-hidden" />
             <h2>简化设置</h2>
-            <label class="field" for="ratio"><span>目标保留比例</span><output id="ratio-value" for="ratio">25%</output></label>
-            <input id="ratio" type="range" min="1" max="100" value="25" />
+            <div class="mode-switch" role="group" aria-label="减面方式">
+              <button type="button" id="mode-ratio" aria-pressed="true">目标保留比例</button>
+              <button type="button" id="mode-count" aria-pressed="false">目标面数</button>
+            </div>
+            <div id="ratio-group">
+              <label class="field" for="ratio"><span>目标保留比例</span><output id="ratio-value" for="ratio">25%</output></label>
+              <input id="ratio" type="range" min="1" max="100" value="25" />
+            </div>
+            <div id="count-group" hidden>
+              <label class="field" for="target-count"><span>目标面数</span><output id="count-ratio" for="target-count">—</output></label>
+              <input id="target-count" class="count-input" type="number" min="1" step="1" inputmode="numeric" />
+              <p class="field-help" id="count-help">导入模型后可用。</p>
+            </div>
             <label class="field" for="error"><span>误差上限</span><output id="error-value" for="error">1.0%</output></label>
             <input id="error" type="range" min="0" max="20" step="0.1" value="1" />
             <label class="check"><input id="appearance" type="checkbox" checked aria-describedby="appearance-help" />保护材质外观</label>
@@ -74,6 +85,6 @@
         </aside>
       </div>
       <footer><p id="status" role="status" aria-live="polite">正在初始化 WebAssembly…</p><span>meshoptimizer 1.3.0 · 本地处理</span></footer>
-    </main>
+    </main>
   </body>
 </html>

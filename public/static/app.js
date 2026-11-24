@@ -634,7 +634,7 @@ function handleAssetAction(event) {
   }
   if (action === "delete") deleteAsset(id);
   if (action === "optimize") openOptimizer(id);
-  if (action === "download") window.location.href = `/api/assets/${id}/download`;
+  if (action === "download") downloadAsset(id);
 }
 
 function mediaCell(url, label) {
@@ -1173,12 +1173,7 @@ function openDetail(id) {
   $("#detailTitle").textContent = asset.name;
   $("#detailDownloadBtn").href = asset.has_glb ? `/api/assets/${asset.id}/download` : "#";
   $("#detailDownloadBtn").style.display = asset.has_glb ? "inline-flex" : "none";
-  $("#detailDownloadBtn").textContent = asset.has_opt
-    ? t("opt.downloadOptimized", { size: formatBytes(asset.glb_opt_size) })
-    : t("detail.download");
-  $("#detailDownloadOriginalBtn").hidden = !asset.has_opt;
-  $("#detailDownloadOriginalBtn").href = `/api/assets/${asset.id}/download?version=original`;
-  $("#detailDownloadOriginalBtn").textContent = t("opt.downloadOriginal", { size: formatBytes(asset.glb_size) });
+  $("#detailDownloadBtn").textContent = t("detail.download");
   $("#detailOptimizeBtn").hidden = !canOptimize(asset);
   $("#detailOptimizeBtn").textContent = asset.has_opt ? t("opt.reopen") : t("opt.open");
   $("#detailDeleteOptBtn").hidden = !(asset.has_opt && canOptimize(asset));
@@ -1416,6 +1411,34 @@ function bindOptimizerEvents() {
   $("#optSaveBtn").addEventListener("click", saveOptimized);
   $("#optCancelBtn").addEventListener("click", () => closeOptimizer());
   $("#optCloseBtn").addEventListener("click", () => closeOptimizer());
+}
+
+// When an optimized version exists, every download asks which version to get.
+function downloadAsset(id) {
+  const asset = state.items.find((item) => item.id === id);
+  if (!asset?.has_glb) return;
+  if (!asset.has_opt) {
+    window.location.href = `/api/assets/${id}/download?version=original`;
+    return;
+  }
+  $("#downloadAssetName").textContent = asset.name;
+  $("#downloadOptimizedLink").href = `/api/assets/${id}/download?version=optimized`;
+  $("#downloadOriginalLink").href = `/api/assets/${id}/download?version=original`;
+  const percent = reductionPercent(asset.tri_before, asset.tri_after);
+  $("#downloadOptimizedInfo").textContent = [
+    formatBytes(asset.glb_opt_size),
+    asset.tri_after ? t("dl.triangles", { count: formatCount(asset.tri_after) }) : "",
+    percent ? t("dl.reduced", { percent }) : "",
+  ].filter(Boolean).join(" · ");
+  $("#downloadOriginalInfo").textContent = [
+    formatBytes(asset.glb_size),
+    asset.tri_before ? t("dl.triangles", { count: formatCount(asset.tri_before) }) : "",
+  ].filter(Boolean).join(" · ");
+  $("#downloadOverlay").hidden = false;
+}
+
+function closeDownloadChoice() {
+  $("#downloadOverlay").hidden = true;
 }
 
 function closeDetail() {
@@ -1656,6 +1679,15 @@ function bindEvents() {
     openOptimizer(id);
   });
   $("#detailDeleteOptBtn").addEventListener("click", deleteOptimized);
+  $("#detailDownloadBtn").addEventListener("click", (event) => {
+    event.preventDefault();
+    if (state.detailId) downloadAsset(state.detailId);
+  });
+  $("#downloadCloseBtn").addEventListener("click", closeDownloadChoice);
+  $("#downloadOverlay").addEventListener("mousedown", (event) => {
+    if (event.target.id === "downloadOverlay") closeDownloadChoice();
+  });
+  $$("#downloadOverlay .download-option").forEach((link) => link.addEventListener("click", () => setTimeout(closeDownloadChoice, 0)));
   bindOptimizerEvents();
   $("#detailOverlay").addEventListener("mousedown", (event) => {
     if (event.target.id === "detailOverlay") closeDetail();
@@ -1691,7 +1723,8 @@ function bindEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (!$("#optOverlay").hidden) closeOptimizer();
+    if (!$("#downloadOverlay").hidden) closeDownloadChoice();
+    else if (!$("#optOverlay").hidden) closeOptimizer();
     else if (!$("#accountOverlay").hidden) closeAccount();
     else if (!$("#imageOverlay").hidden) closeImagePreview();
     else if (!$("#helpOverlay").hidden) $("#helpOverlay").hidden = true;

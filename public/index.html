@@ -320,7 +320,6 @@
         <button class="btn btn-text btn-danger-text footer-start" id="detailDeleteOptBtn" type="button" hidden data-i18n="opt.delete">删除优化版</button>
         <button class="btn btn-secondary" id="detailCloseBtn" type="button" data-i18n="detail.close">关闭</button>
         <button class="btn btn-secondary" id="detailOptimizeBtn" type="button" hidden data-i18n="opt.open">减面优化</button>
-        <a class="btn btn-secondary" id="detailDownloadOriginalBtn" href="#" download hidden data-i18n="opt.downloadOriginal">下载原始版</a>
         <a class="btn btn-primary" id="detailDownloadBtn" href="#" download data-i18n="detail.download">下载 GLB</a>
       </div>
     </section>
@@ -421,6 +420,29 @@
         <span class="optimizer-note" data-i18n="opt.note">每次都基于原始模型优化，保存后原始 GLB 仍会保留。</span>
         <button class="btn btn-secondary" id="optCancelBtn" type="button" data-i18n="common.cancel">取消</button>
         <button class="btn btn-primary" id="optSaveBtn" type="button" disabled data-i18n="opt.save">保存为优化版</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay" id="downloadOverlay" hidden>
+    <section class="help-modal download-modal" role="dialog" aria-modal="true" aria-labelledby="downloadTitle">
+      <div class="detail-header">
+        <div>
+          <p class="drawer-kicker">DOWNLOAD</p>
+          <h2 id="downloadTitle" data-i18n="dl.title">选择下载版本</h2>
+        </div>
+        <button class="icon-btn" id="downloadCloseBtn" type="button" aria-label="Close" data-i18n-aria="common.close">×</button>
+      </div>
+      <div class="help-body download-options">
+        <p class="download-asset" id="downloadAssetName"></p>
+        <a class="download-option recommended" id="downloadOptimizedLink" href="#">
+          <strong><span data-i18n="dl.optimized">优化版模型</span><em data-i18n="dl.recommended">推荐</em></strong>
+          <small id="downloadOptimizedInfo"></small>
+        </a>
+        <a class="download-option" id="downloadOriginalLink" href="#">
+          <strong data-i18n="dl.original">原始模型</strong>
+          <small id="downloadOriginalInfo"></small>
+        </a>
       </div>
     </section>
   </div>

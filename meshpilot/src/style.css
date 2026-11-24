@@ -140,3 +140,29 @@ footer > span { flex: 0 0 auto; }
 html.embedded .topbar, html.embedded .intro, html.embedded #drop, html.embedded #export { display: none; }
 html.embedded main { max-width: none; padding: 12px 14px 8px; }
 html.embedded .workspace { gap: 12px; }
+
+/* Reduction mode: target ratio or target triangle count */
+.mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; margin-bottom: 12px; border-radius: 8px; background: #e3e9e3; }
+.mode-switch button { border: none; background: transparent; padding: 6px 8px; font-size: 12px; }
+.mode-switch button[aria-pressed='true'] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.count-input { width: 100%; padding: 8px 10px; border: 1px solid #cdd7cf; border-radius: 6px; background: #fff; font-size: 14px; font-variant-numeric: tabular-nums; }
+.count-input:focus { outline: 2px solid #19765e; outline-offset: 1px; }
+
+/* Texture before/after split inside the result window */
+.texture-split { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.texture-split-line {
+  position: absolute; top: 0; bottom: 0; width: 22px; margin-left: -11px; cursor: ew-resize;
+  pointer-events: auto; touch-action: none; display: flex; justify-content: center;
+}
+.texture-split-line::before { content: ''; width: 2px; height: 100%; background: rgba(255, 255, 255, .92); box-shadow: 0 0 0 1px rgba(20, 39, 49, .35); }
+.texture-split-line span {
+  position: absolute; top: 50%; width: 28px; height: 28px; margin-top: -14px; border-radius: 50%;
+  background: #fff; border: 1px solid #9fb1ab; box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+}
+.texture-split-line span::before { content: '‹ ›'; display: grid; place-items: center; height: 100%; font-size: 13px; font-weight: 700; color: var(--accent); }
+.texture-split-tag {
+  position: absolute; bottom: 12px; padding: 4px 8px; border-radius: 5px; background: rgba(20, 39, 49, .82);
+  color: #f0f5f1; font-size: 11px;
+}
+.texture-split-tag.left { left: 12px; }
+.texture-split-tag.right { right: 12px; }

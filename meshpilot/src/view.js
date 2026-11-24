@@ -69,12 +69,36 @@ function createView(stage) {
   scene.add(grid);
 
   const frame = new THREE.Group();
-  scene.add(frame);
+  const compareFrame = new THREE.Group();
+  scene.add(frame, compareFrame);
+  let split = null; // 0..1: left of the line shows `frame`, right shows `compareFrame`
   let materials = new Map();
   const geometryMaterial = new THREE.MeshStandardMaterial({ color: 0xa5b7b2, roughness: 0.82, flatShading: true, side: THREE.DoubleSide });
   let geometryOnly = false;
   let wired = false;
-  const draw = () => renderer.render(scene, camera);
+  function draw() {
+    if (split === null || !compareFrame.children.length) {
+      compareFrame.visible = false;
+      frame.visible = true;
+      renderer.setScissorTest(false);
+      renderer.render(scene, camera);
+      return;
+    }
+    const width = stage.clientWidth;
+    const height = stage.clientHeight;
+    const cut = Math.round(width * split);
+    renderer.setScissorTest(true);
+    renderer.setScissor(0, 0, cut, height);
+    frame.visible = true;
+    compareFrame.visible = false;
+    renderer.render(scene, camera);
+    renderer.setScissor(cut, 0, width - cut, height);
+    frame.visible = false;
+    compareFrame.visible = true;
+    renderer.render(scene, camera);
+    renderer.setScissorTest(false);
+    frame.visible = true;
+  }
 
   function resize() {
     const { clientWidth, clientHeight } = stage;
@@ -85,12 +109,8 @@ function createView(stage) {
     draw();
   }
 
-  function setModel(display, model) {
-    frame.clear();
-    for (const material of materials.values()) material.dispose();
-    materials = new Map();
-    if (display) {
-      const preview = display.clone();
+  function addPreview(target, display) {
+    const preview = display.clone();
       preview.traverse((mesh) => {
         if (!mesh.isMesh) return;
         const cloneMaterial = (material) => {
@@ -105,12 +125,30 @@ function createView(stage) {
         mesh.userData.previewMaterial = mesh.material;
         if (geometryOnly) showGeometry(mesh);
       });
-      frame.scale.setScalar(1 / model.radius);
-      frame.position.copy(model.center).multiplyScalar(-1 / model.radius);
+    target.add(preview);
+  }
+
+  // `compare` (optional) is drawn right of the split line, e.g. the same mesh with compressed textures.
+  function setModel(display, model, compare = null) {
+    frame.clear();
+    compareFrame.clear();
+    for (const material of materials.values()) material.dispose();
+    materials = new Map();
+    if (display) {
+      addPreview(frame, display);
+      if (compare) addPreview(compareFrame, compare);
+      for (const group of [frame, compareFrame]) {
+        group.scale.setScalar(1 / model.radius);
+        group.position.copy(model.center).multiplyScalar(-1 / model.radius);
+      }
       const bounds = new THREE.Box3().setFromObject(model.display);
       grid.position.y = (bounds.min.y - model.center.y) / model.radius - 0.12;
-      frame.add(preview);
     }
+    draw();
+  }
+
+  function setSplit(value) {
+    split = value === null ? null : Math.min(1, Math.max(0, value));
     draw();
   }
 
@@ -132,7 +170,7 @@ function createView(stage) {
 
   function setGeometryOnly(value) {
     geometryOnly = value;
-    frame.traverse((mesh) => {
+    scene.traverse((mesh) => {
       if (!mesh.isMesh) return;
       if (value) showGeometry(mesh);
       else mesh.material = mesh.userData.previewMaterial;
@@ -143,7 +181,7 @@ function createView(stage) {
   const observer = new ResizeObserver(resize);
   observer.observe(stage);
   resize();
-  return { camera, controls, draw, setModel, setWireframe, setGeometryOnly, dispose() {
+  return { camera, controls, draw, setModel, setSplit, setWireframe, setGeometryOnly, dispose() {
     observer.disconnect();
     controls.dispose();
     geometryMaterial.dispose();

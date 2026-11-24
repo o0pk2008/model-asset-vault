@@ -21,6 +21,18 @@ let resultCounts;
 let busy = false;
 let worker;
 const resultListeners = [];
+const modeUi = {
+  ratioButton: document.getElementById('mode-ratio'),
+  countButton: document.getElementById('mode-count'),
+  ratioGroup: document.getElementById('ratio-group'),
+  countGroup: document.getElementById('count-group'),
+  count: document.getElementById('target-count'),
+  countRatio: document.getElementById('count-ratio'),
+  countHelp: document.getElementById('count-help'),
+};
+let reduceMode = 'ratio'; // 'ratio' | 'count'
+const splitUi = { box: document.getElementById('texture-split'), line: document.getElementById('texture-split-line') };
+let splitValue = 0.5;
 const busyListeners = [];
 const texturePanel = setupTextureControls({
   isBusy: () => busy,
@@ -66,6 +78,8 @@ function showCounts(side, triangles, vertices) {
 
 function clearResult() {
   views?.after.setModel(null);
+  views?.after.setSplit(null);
+  splitUi.box.hidden = true;
   if (model) views?.before.setModel(model.display, model);
   result?.children.forEach((mesh) => mesh.geometry.dispose());
   result = undefined;
@@ -76,12 +90,16 @@ function clearResult() {
 }
 
 function renderResult() {
-  const compare = Boolean(result && texturePanel.comparing());
-  if (model) views?.before.setModel(compare ? result : model.display, model);
-  views?.after.setModel(texturePanel.display(result), model);
-  ui['before-label'].textContent = compare ? '简化网格 · 原始贴图' : '原始网格';
-  ui['after-label'].textContent = texturePanel.hasApplied() ? '简化结果 · 压缩贴图' : '简化结果';
-  const left = compare ? resultCounts : model;
+  // Texture comparison happens inside the result window (split line), never in the original-mesh window.
+  const compare = Boolean(result && texturePanel.hasApplied() && texturePanel.comparing());
+  if (model) views?.before.setModel(model.display, model);
+  views?.after.setModel(compare ? result : texturePanel.display(result), model, compare ? texturePanel.display(result) : null);
+  views?.after.setSplit(compare ? splitValue : null);
+  splitUi.box.hidden = !compare;
+  splitUi.line.style.left = `${splitValue * 100}%`;
+  ui['before-label'].textContent = '原始网格';
+  ui['after-label'].textContent = compare ? '简化结果 · 贴图对比' : texturePanel.hasApplied() ? '简化结果 · 压缩贴图' : '简化结果';
+  const left = model;
   showCounts('before', left?.triangles, left?.vertices);
   showCounts('after', resultCounts?.triangles, resultCounts?.vertices);
   setBusy(busy);
@@ -103,6 +121,9 @@ function setModel(source, name, kind) {
   if (previous) disposeModel(previous.source);
   ui['model-name'].textContent = name;
   ui['model-name'].title = name;
+  modeUi.count.max = model.triangles;
+  modeUi.count.value = Math.max(1, Math.round(model.triangles * Number(ui.ratio.value) / 100));
+  updateCountInfo();
   ui['model-kind'].textContent = kind;
   views?.fit();
 }
@@ -124,7 +145,12 @@ function simplifyInWorker(options) {
 async function run() {
   if (!model || busy) return;
   setBusy(true);
-  const ratio = Number(ui.ratio.value) / 100;
+  const ratio = currentRatio();
+  if (!ratio) {
+    status('请输入有效的目标面数。', true);
+    setBusy(false);
+    return;
+  }
   const protectAppearance = ui.appearance.checked && ratio < 1;
   status('正在简化网格…');
   try {
@@ -194,7 +220,37 @@ function counts() {
   };
 }
 
+function currentRatio() {
+  if (reduceMode === 'ratio') return Number(ui.ratio.value) / 100;
+  const target = Math.floor(Number(modeUi.count.value));
+  if (!model || !Number.isFinite(target) || target < 1) return 0;
+  return Math.min(1, target / model.triangles);
+}
+
+function updateCountInfo() {
+  if (!model) {
+    modeUi.countRatio.value = '—';
+    return;
+  }
+  const ratio = currentRatio();
+  modeUi.countRatio.value = ratio ? formatPercent(ratio) : '—';
+  modeUi.countHelp.textContent = `当前模型 ${number.format(model.triangles)} 个三角面`;
+}
+
+function setMode(mode) {
+  reduceMode = mode === 'count' ? 'count' : 'ratio';
+  modeUi.ratioButton.setAttribute('aria-pressed', reduceMode === 'ratio');
+  modeUi.countButton.setAttribute('aria-pressed', reduceMode === 'count');
+  modeUi.ratioGroup.hidden = reduceMode !== 'ratio';
+  modeUi.countGroup.hidden = reduceMode !== 'count';
+  if (reduceMode === 'count' && model) {
+    modeUi.count.value = Math.max(1, Math.round(model.triangles * Number(ui.ratio.value) / 100));
+  }
+  updateCountInfo();
+}
+
 function setRatio(percent, rerun, errorPercent) {
+  setMode('ratio');
   const value = Math.min(100, Math.max(1, Math.round(Number(percent) || 50)));
   ui.ratio.value = value;
   ui['ratio-value'].value = `${value}%`;
@@ -241,6 +297,43 @@ ui.geometry.addEventListener('click', () => {
   views?.after.setGeometryOnly(value);
 });
 ui.ratio.addEventListener('input', () => { ui['ratio-value'].value = `${ui.ratio.value}%`; });
+modeUi.ratioButton.addEventListener('click', () => setMode('ratio'));
+modeUi.countButton.addEventListener('click', () => setMode('count'));
+modeUi.count.addEventListener('input', updateCountInfo);
+modeUi.count.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') run();
+});
+
+function moveSplit(clientX) {
+  const rect = ui.after.getBoundingClientRect();
+  if (!rect.width) return;
+  splitValue = Math.min(0.98, Math.max(0.02, (clientX - rect.left) / rect.width));
+  splitUi.line.style.left = `${splitValue * 100}%`;
+  views?.after.setSplit(splitValue);
+}
+let splitDragging = false;
+splitUi.line.addEventListener('pointerdown', (event) => {
+  splitDragging = true;
+  splitUi.line.setPointerCapture(event.pointerId);
+  event.preventDefault();
+  event.stopPropagation();
+});
+splitUi.line.addEventListener('pointermove', (event) => {
+  if (splitDragging) moveSplit(event.clientX);
+});
+const stopSplit = (event) => {
+  splitDragging = false;
+  if (splitUi.line.hasPointerCapture?.(event.pointerId)) splitUi.line.releasePointerCapture(event.pointerId);
+};
+splitUi.line.addEventListener('pointerup', stopSplit);
+splitUi.line.addEventListener('pointercancel', stopSplit);
+splitUi.line.addEventListener('keydown', (event) => {
+  const step = event.key === 'ArrowLeft' ? -0.04 : event.key === 'ArrowRight' ? 0.04 : 0;
+  if (!step) return;
+  event.preventDefault();
+  const rect = ui.after.getBoundingClientRect();
+  moveSplit(rect.left + rect.width * (splitValue + step));
+});
 ui.error.addEventListener('input', () => { ui['error-value'].value = formatPercent(Number(ui.error.value) / 100); });
 ui.file.addEventListener('change', () => {
   importFile(ui.file.files[0]);

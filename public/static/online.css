@@ -315,6 +315,24 @@ body.booting .app-shell, body.booting .admin-shell { visibility: hidden; }
   .optimizer-note { display: none; }
 }
 
+/* download version chooser */
+.overlay:has(.download-modal) { align-items: center; justify-content: center; padding: 24px; }
+.download-modal { width: min(440px, 100%); }
+.download-options { display: flex; flex-direction: column; gap: 10px; }
+.download-asset { margin: 0 0 4px; color: var(--muted); font-size: 13px; }
+.download-option {
+  display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px solid var(--line-strong);
+  border-radius: 12px; background: #fff; transition: 0.15s ease;
+}
+.download-option:hover { border-color: var(--primary); background: var(--primary-soft); }
+.download-option strong { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.download-option em {
+  font-style: normal; font-size: 10px; font-weight: 750; padding: 2px 7px; border-radius: 999px;
+  background: var(--accent-soft); color: #0f6f52;
+}
+.download-option small { color: var(--muted); font-size: 12px; }
+.download-option.recommended { border-color: #9ad9c2; }
+
 /* password visibility toggle */
 .pw-field { position: relative; display: flex; }
 .pw-field input { padding-right: 42px; }

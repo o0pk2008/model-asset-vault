@@ -58,7 +58,7 @@ export function setupTextureControls({ isBusy, setBusy, onChange, onApplied }) {
 
   function showSelectionStatus() {
     ui.status.textContent = !entries.length ? '导入带贴图的 GLB 后可用。'
-      : selectedSize() ? '预览后可下载包含这组贴图的 GLB。'
+      : selectedSize() ? '正在应用所选贴图尺寸…'
         : `已载入 ${entries.length} 张贴图，导出时保留可直接封装的原图。`;
   }
 
@@ -75,6 +75,8 @@ export function setupTextureControls({ isBusy, setBusy, onChange, onApplied }) {
     showSelectionStatus();
     onChange();
     previous?.dispose();
+    // Choosing a size applies it right away; the result window then shows a before/after split.
+    if (selectedSize() && entries.length) applyTextures();
   }
 
   ui.size.addEventListener('change', selectionChanged);
@@ -87,7 +89,7 @@ export function setupTextureControls({ isBusy, setBusy, onChange, onApplied }) {
     onChange();
   });
 
-  ui.preview.addEventListener('click', async () => {
+  async function applyTextures() {
     if (isBusy() || !selectedSize() || !entries.length || applied) return;
     setBusy(true);
     ui.status.textContent = '正在调整尺寸并压缩贴图…';
@@ -108,7 +110,9 @@ export function setupTextureControls({ isBusy, setBusy, onChange, onApplied }) {
     } finally {
       setBusy(false);
     }
-  });
+  }
+
+  ui.preview.addEventListener('click', applyTextures);
 
   return {
     setModel,

@@ -289,6 +289,12 @@
       "opt.filterAll": "全部模型",
       "opt.filterDone": "已优化",
       "opt.filterTodo": "未优化",
+      "dl.title": "选择下载版本",
+      "dl.optimized": "优化版模型",
+      "dl.recommended": "推荐",
+      "dl.original": "原始模型",
+      "dl.triangles": "{count} 三角面",
+      "dl.reduced": "面数 -{percent}%",
       "error.request": "请求失败（{status}）"
     },
 
@@ -581,6 +587,12 @@
       "opt.filterAll": "All models",
       "opt.filterDone": "Optimized",
       "opt.filterTodo": "Not optimized",
+      "dl.title": "Choose a version",
+      "dl.optimized": "Optimized model",
+      "dl.recommended": "Recommended",
+      "dl.original": "Original model",
+      "dl.triangles": "{count} triangles",
+      "dl.reduced": "-{percent}% triangles",
       "error.request": "Request failed ({status})"
     }
   };
