@@ -55,6 +55,9 @@ def asset_to_dict(row: dict) -> dict:
     for field in FILE_FIELDS:
         data[f"{field}_url"] = storage.file_url(cfg, row.get(f"{field}_key"))
     data["has_glb"] = bool(row.get("glb_key"))
+    data["has_opt"] = bool(row.get("glb_opt_key")) and data["has_glb"]
+    data["glb_opt_url"] = storage.file_url(cfg, row.get("glb_opt_key")) if data["has_opt"] else ""
+    data["glb_opt_size"] = int(row.get("glb_opt_size") or 0)
     access = can_edit_asset(g.user, row)
     data["can_edit"] = bool(access)
     data["edit_scope"] = access or ""
@@ -93,8 +96,8 @@ def resolve_file(cfg: dict, field: str, value, existing: dict | None) -> tuple[s
     if not storage.key_matches_kind(cfg, key, field):
         raise ApiError("文件参数无效")
     clash = get_db().one(
-        "SELECT id FROM assets WHERE photo_key = ? OR screenshot_key = ? OR glb_key = ?",
-        (key, key, key),
+        "SELECT id FROM assets WHERE photo_key = ? OR screenshot_key = ? OR glb_key = ? OR glb_opt_key = ?",
+        (key, key, key, key),
     )
     if clash:
         raise ApiError("文件参数无效")
@@ -148,6 +151,11 @@ def list_assets():
     if method in METHODS:
         clauses.append("method = ?")
         params.append(method)
+    optimized = (request.args.get("optimized") or "").strip()
+    if optimized == "1":
+        clauses.append("(glb_opt_key IS NOT NULL AND glb_opt_key != '')")
+    elif optimized == "0":
+        clauses.append("(glb_key IS NOT NULL AND glb_key != '' AND (glb_opt_key IS NULL OR glb_opt_key = ''))")
     if mine:
         clauses.append("created_by = ?")
         params.append(g.user["id"])
@@ -423,6 +431,9 @@ def update_asset(asset_id: int):
             asset_id,
         ),
     )
+    if glb_key != existing["glb_key"] and existing.get("glb_opt_key"):
+        old_keys.append(existing["glb_opt_key"])
+        clear_optimized(asset_id)
     get_db().commit()
     storage.delete_objects(cfg, old_keys)
     detail = "上传 GLB" if glb_key and glb_key != existing["glb_key"] else ""
@@ -455,6 +466,68 @@ def batch_set_method():
     return jsonify({"updated": changed, "method": method})
 
 
+def clear_optimized(asset_id: int) -> None:
+    get_db().execute(
+        "UPDATE assets SET glb_opt_key = NULL, glb_opt_size = 0, glb_opt_at = NULL, tri_before = 0, tri_after = 0 "
+        "WHERE id = ?",
+        (asset_id,),
+    )
+
+
+def _triangles(value) -> int:
+    try:
+        return max(0, min(int(value or 0), 2_000_000_000))
+    except (TypeError, ValueError):
+        return 0
+
+
+@bp.post("/assets/<int:asset_id>/optimized")
+@permission_required("edit")
+def save_optimized(asset_id: int):
+    """Store a MeshPilot-simplified GLB next to the original (the original is never replaced)."""
+    existing = get_asset(asset_id)
+    if existing is None:
+        raise ApiError("资产不存在", 404)
+    if not existing["glb_key"]:
+        raise ApiError("该资产没有 GLB 文件")
+    data = body()
+    cfg = storage_cfg()
+    key, _name, size = resolve_file(cfg, "glb", {"key": data.get("key"), "name": "optimized.glb"}, None)
+    old_key = existing.get("glb_opt_key")
+    before = _triangles(data.get("triangles_before"))
+    after = _triangles(data.get("triangles_after"))
+    get_db().execute(
+        "UPDATE assets SET glb_opt_key = ?, glb_opt_size = ?, glb_opt_at = ?, tri_before = ?, tri_after = ?, "
+        "updated_by = ? WHERE id = ?",
+        (key, size, config.now_text(), before, after, g.user["id"], asset_id),
+    )
+    get_db().commit()
+    if old_key:
+        storage.delete_objects(cfg, [old_key])
+    reduction = f"{(1 - after / before) * 100:.0f}%" if before and after else "?"
+    log_action(
+        "asset.optimize",
+        f"asset:{asset_id}",
+        f"{existing['name']} 面数 {before} → {after}（-{reduction}） 大小 {existing['glb_size']} → {size}",
+    )
+    return jsonify(asset_to_dict(get_asset(asset_id)))
+
+
+@bp.delete("/assets/<int:asset_id>/optimized")
+@permission_required("edit")
+def delete_optimized(asset_id: int):
+    existing = get_asset(asset_id)
+    if existing is None:
+        raise ApiError("资产不存在", 404)
+    old_key = existing.get("glb_opt_key")
+    clear_optimized(asset_id)
+    get_db().commit()
+    if old_key:
+        storage.delete_objects(storage_cfg(), [old_key])
+        log_action("asset.optimize_delete", f"asset:{asset_id}", existing["name"])
+    return jsonify(asset_to_dict(get_asset(asset_id)))
+
+
 @bp.delete("/assets/<int:asset_id>")
 @permission_required("delete")
 def delete_asset(asset_id: int):
@@ -464,7 +537,9 @@ def delete_asset(asset_id: int):
     db = get_db()
     db.execute("DELETE FROM assets WHERE id = ?", (asset_id,))
     db.commit()
-    storage.delete_objects(storage_cfg(), [existing[f"{field}_key"] for field in FILE_FIELDS])
+    storage.delete_objects(
+        storage_cfg(), [existing[f"{field}_key"] for field in FILE_FIELDS] + [existing.get("glb_opt_key")]
+    )
     log_action("asset.delete", f"asset:{asset_id}", existing["name"])
     return jsonify({"success": True})
 
@@ -476,9 +551,15 @@ def download_asset(asset_id: int):
     if row is None or not row["glb_key"]:
         raise ApiError("该资产没有 GLB 文件", 404)
     filename = row["glb_name"] or f"asset-{asset_id}.glb"
+    key = row["glb_key"]
+    use_optimized = request.args.get("version") != "original" and bool(row.get("glb_opt_key"))
+    if use_optimized:
+        key = row["glb_opt_key"]
+        base = filename[:-4] if filename.lower().endswith(".glb") else filename
+        filename = f"{base}-optimized.glb"
     try:
-        url = storage.download_url(storage_cfg(), row["glb_key"], filename)
+        url = storage.download_url(storage_cfg(), key, filename)
     except storage.StorageError as error:
         raise ApiError(str(error)) from error
-    log_action("asset.download", f"asset:{asset_id}", row["name"])
+    log_action("asset.download", f"asset:{asset_id}", f"{row['name']}{' (优化版)' if use_optimized else ''}")
     return redirect(url, code=302)

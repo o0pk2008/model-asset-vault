@@ -283,7 +283,7 @@ def storage_cors():
 
 
 def _referenced_keys() -> set[str]:
-    rows = get_db().all("SELECT photo_key, screenshot_key, glb_key FROM assets")
+    rows = get_db().all("SELECT photo_key, screenshot_key, glb_key, glb_opt_key FROM assets")
     return {value for row in rows for value in row.values() if value}
 
 

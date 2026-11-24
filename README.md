@@ -69,3 +69,13 @@ $env:ADMIN_PASSWORD = "admin12345"
 2. **制作人**（需「编辑 / 提交成果」权限）：在待制作任务上点“编辑”，进入成果录入视图，上传制作截图与 GLB；上传 GLB 后状态自动变为“已完成”。
 3. **所有成员**：在线预览 3D 模型、下载 GLB。
 4. **负责人**（需「删除任务」权限）：删除任务，相关文件会从 S3 一并删除。
+
+## MeshPilot 减面优化
+
+资产的「减面优化」使用内置的 MeshPilot 工作台（源码在 `meshpilot/`，来自团队的 MeshPilot 项目并增加了嵌入模式）。减面和贴图压缩都在用户浏览器里完成，不占用 Vercel 服务器。优化结果另存为「优化版」，原始 GLB 始终保留；上传新的 GLB 时旧的优化版会自动作废。
+
+构建产物提交在 `public/meshpilot/`，Vercel 直接作为静态文件发布。修改 `meshpilot/` 源码后需重新构建并提交：
+
+```bash
+sh scripts/build_meshpilot.sh
+```

@@ -36,12 +36,16 @@ const state = {
   method: "",
   editMethod: null,
   selected: new Set(),
+  opt: null,
+  detailVersion: "opt",
+  detailVersionFor: null,
   page: 1,
   pageSize: savedPageSize(),
   pagination: null,
 };
 
 const ICONS = {
+  optimize: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m8.5 10.5 3.5 2 3.5-2M12 12.5V17"/><path d="M4 4l3 3M20 4l-3 3"/></svg>`,
   view: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 20.5 7.4v9.2L12 21.2 3.5 16.6V7.4L12 2.8Z"/><path d="m3.7 7.5 8.3 4.8 8.3-4.8M12 12.3v8.8"/></svg>`,
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m4 20 4.2-1 10-10a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg>`,
   download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M4.5 18.5h15"/></svg>`,
@@ -184,6 +188,8 @@ function currentQuery() {
   if (status) params.set("status", status);
   params.set("sort", sort);
   if (state.method) params.set("method", state.method);
+  const optimized = $("#optimizedFilter").value;
+  if (optimized) params.set("optimized", optimized);
   params.set("page", String(state.page));
   params.set("page_size", String(state.pageSize));
   return params;
@@ -480,7 +486,7 @@ function renderTable() {
           <td>
             ${
               item.glb_url
-                ? `<div class="file-pill"><span class="file-dot"></span><div><strong>${escapeHtml(item.glb_name || "model.glb")}</strong><br>${formatBytes(item.glb_size)}</div></div>`
+                ? `<div class="file-pill"><span class="file-dot"></span><div><strong>${escapeHtml(item.glb_name || "model.glb")}</strong><br>${formatBytes(item.glb_size)}</div></div>${optBadge(item)}`
                 : `<span class="muted">${t("table.noModel")}</span>`
             }
           </td>
@@ -489,6 +495,7 @@ function renderTable() {
             <div class="row-actions">
               <button class="action-btn view" type="button" data-action="view" data-id="${item.id}" title="${viewLabel}" aria-label="${viewLabel}">${ICONS.view}</button>
               ${item.can_edit ? `<button class="action-btn edit" type="button" data-action="edit" data-id="${item.id}" title="${editLabel}" aria-label="${editLabel}">${ICONS.edit}</button>` : ""}
+              ${canOptimize(item) ? `<button class="action-btn optimize" type="button" data-action="optimize" data-id="${item.id}" title="${escapeHtml(t("opt.open"))}" aria-label="${escapeHtml(t("opt.open"))}">${ICONS.optimize}</button>` : ""}
               <button class="action-btn download" type="button" data-action="download" data-id="${item.id}" title="${downloadLabel}" aria-label="${downloadLabel}" ${item.has_glb ? "" : "disabled"}>${ICONS.download}</button>
               ${item.can_delete ? `<button class="action-btn danger" type="button" data-action="delete" data-id="${item.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICONS.delete}</button>` : ""}
             </div>
@@ -535,7 +542,7 @@ function renderCards() {
         .filter(Boolean)
         .slice(0, 3);
       const viewer = item.glb_url
-        ? `<model-viewer data-model-src="${escapeHtml(item.glb_url)}" alt="${escapeHtml(item.name)}" loading="lazy" camera-controls auto-rotate auto-rotate-delay="0" rotation-per-second="24deg" shadow-intensity="1" exposure="1" environment-image="/static/env/studio.hdr" interaction-prompt="none"></model-viewer>
+        ? `<model-viewer data-model-src="${escapeHtml(item.glb_opt_url || item.glb_url)}" alt="${escapeHtml(item.name)}" loading="lazy" camera-controls auto-rotate auto-rotate-delay="0" rotation-per-second="24deg" shadow-intensity="1" exposure="1" environment-image="/static/env/studio.hdr" interaction-prompt="none"></model-viewer>
            <span class="card-badge">${t("card.autoRotate")}</span>`
         : item.photo_url
           ? `<img src="${escapeHtml(item.photo_url)}" alt="${escapeHtml(previewLabel)}" title="${escapeHtml(t("table.clickZoom") + previewLabel)}" data-action="image" data-url="${escapeHtml(item.photo_url)}" data-label="${escapeHtml(previewLabel)}">`
@@ -548,7 +555,8 @@ function renderCards() {
           </div>
           <div class="card-body">
             <h3 class="card-title" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h3>
-            <div class="card-meta">${item.code ? escapeHtml(item.code) : t("table.unnumbered")} · ${formatBytes(item.glb_size)}</div>
+            <div class="card-meta">${item.code ? escapeHtml(item.code) : t("table.unnumbered")} · ${formatBytes(item.has_opt ? item.glb_opt_size : item.glb_size)}</div>
+            ${optBadge(item)}
             <div class="card-row">
               <span class="status-stack">${methodBadge(item.method)}<span class="status-chip" data-status="${escapeHtml(item.status)}">${escapeHtml(I18N.status(item.status))}</span></span>
               <span class="card-time">${escapeHtml(item.updated_at || "")}</span>
@@ -558,6 +566,7 @@ function renderCards() {
           <div class="card-footer">
             <button class="action-btn view" type="button" data-action="view" data-id="${item.id}" title="${viewLabel}" aria-label="${viewLabel}">${ICONS.view}</button>
             ${item.can_edit ? `<button class="action-btn edit" type="button" data-action="edit" data-id="${item.id}" title="${editLabel}" aria-label="${editLabel}">${ICONS.edit}</button>` : ""}
+            ${canOptimize(item) ? `<button class="action-btn optimize" type="button" data-action="optimize" data-id="${item.id}" title="${escapeHtml(t("opt.open"))}" aria-label="${escapeHtml(t("opt.open"))}">${ICONS.optimize}</button>` : ""}
             <button class="action-btn download" type="button" data-action="download" data-id="${item.id}" title="${downloadLabel}" aria-label="${downloadLabel}" ${item.has_glb ? "" : "disabled"}>${ICONS.download}</button>
             ${item.can_delete ? `<button class="action-btn danger" type="button" data-action="delete" data-id="${item.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICONS.delete}</button>` : ""}
           </div>
@@ -624,6 +633,7 @@ function handleAssetAction(event) {
     openEditor(id, needsCompletion ? "completion" : "edit");
   }
   if (action === "delete") deleteAsset(id);
+  if (action === "optimize") openOptimizer(id);
   if (action === "download") window.location.href = `/api/assets/${id}/download`;
 }
 
@@ -1163,6 +1173,19 @@ function openDetail(id) {
   $("#detailTitle").textContent = asset.name;
   $("#detailDownloadBtn").href = asset.has_glb ? `/api/assets/${asset.id}/download` : "#";
   $("#detailDownloadBtn").style.display = asset.has_glb ? "inline-flex" : "none";
+  $("#detailDownloadBtn").textContent = asset.has_opt
+    ? t("opt.downloadOptimized", { size: formatBytes(asset.glb_opt_size) })
+    : t("detail.download");
+  $("#detailDownloadOriginalBtn").hidden = !asset.has_opt;
+  $("#detailDownloadOriginalBtn").href = `/api/assets/${asset.id}/download?version=original`;
+  $("#detailDownloadOriginalBtn").textContent = t("opt.downloadOriginal", { size: formatBytes(asset.glb_size) });
+  $("#detailOptimizeBtn").hidden = !canOptimize(asset);
+  $("#detailOptimizeBtn").textContent = asset.has_opt ? t("opt.reopen") : t("opt.open");
+  $("#detailDeleteOptBtn").hidden = !(asset.has_opt && canOptimize(asset));
+  if (state.detailVersionFor !== asset.id) {
+    state.detailVersion = "opt";
+    state.detailVersionFor = asset.id;
+  }
   $("#detailInfo").innerHTML = `
     <h3>${escapeHtml(asset.name)}</h3>
     <div class="info-code">${escapeHtml(asset.code || t("table.unnumbered"))}</div>
@@ -1175,6 +1198,7 @@ function openDetail(id) {
       <div class="info-row"><span>${t("detail.maker")}</span><span>${escapeHtml(asset.maker || t("common.unknown"))}</span></div>
       <div class="info-row"><span>${t("detail.tags")}</span><span>${escapeHtml(tagListHtml(asset.tags) || t("common.none"))}</span></div>
       <div class="info-row"><span>${t("detail.glbSize")}</span><span>${formatBytes(asset.glb_size)}</span></div>
+      ${asset.has_opt ? `<div class="info-row"><span>${t("opt.label")}</span><span>${escapeHtml(optSummary(asset))}</span></div>` : ""}
       <div class="info-row"><span>${t("detail.createdAt")}</span><span>${escapeHtml(asset.created_at)}</span></div>
       <div class="info-row"><span>${t("detail.completedAt")}</span><span>${escapeHtml(asset.completed_at || t("common.none"))}</span></div>
       <div class="info-row"><span>${t("detail.updatedAt")}</span><span>${escapeHtml(asset.updated_at)}</span></div>
@@ -1190,15 +1214,208 @@ function openDetail(id) {
     }`;
 
   viewer.src = "";
+  $("#versionSwitch").hidden = !asset.has_opt;
+  $$("#versionSwitch button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.version === state.detailVersion);
+  });
   if (asset.glb_url) {
     placeholder.hidden = true;
     loading.hidden = false;
-    viewer.src = asset.glb_url;
+    viewer.src = asset.has_opt && state.detailVersion === "opt" ? asset.glb_opt_url : asset.glb_url;
   } else {
     placeholder.hidden = false;
     loading.hidden = true;
   }
   $("#detailOverlay").hidden = false;
+}
+
+// ------------------------------------------------------------------ MeshPilot 减面优化
+
+const OPT_DEFAULT_RATIO = 50;
+const OPT_DEFAULT_ERROR = 2; // %: the error limit has to grow with the ratio or presets barely differ
+
+function canOptimize(item) {
+  return Boolean(item?.has_glb && item.edit_scope === "full");
+}
+
+function formatCount(value) {
+  return Number(value || 0).toLocaleString(I18N.current === "en" ? "en-US" : "zh-CN");
+}
+
+function reductionPercent(before, after) {
+  return before && after ? Math.round((1 - after / before) * 100) : 0;
+}
+
+function optSummary(item) {
+  const sizes = t("opt.sizes", { size: formatBytes(item.glb_opt_size), original: formatBytes(item.glb_size) });
+  if (!item.tri_before || !item.tri_after) return sizes;
+  return `${t("opt.triangles", { before: formatCount(item.tri_before), after: formatCount(item.tri_after) })} · ${sizes}`;
+}
+
+function optBadge(item) {
+  if (!item.has_opt) return "";
+  const percent = reductionPercent(item.tri_before, item.tri_after);
+  const label = percent ? t("opt.badge", { percent }) : t("opt.badgePlain");
+  return `<div class="opt-badge" title="${escapeHtml(optSummary(item))}"><span>${escapeHtml(label)}</span>${escapeHtml(formatBytes(item.glb_opt_size))}</div>`;
+}
+
+function optimizerMessage(message, transfer) {
+  $("#optFrame").contentWindow?.postMessage({ target: "meshpilot", ...message }, location.origin, transfer);
+}
+
+function setOptimizerBusy(busy) {
+  state.opt.busy = busy;
+  $("#optSaveBtn").disabled = busy || !state.opt.counts?.after || state.opt.saving;
+  $$("#optPresets button").forEach((button) => {
+    button.disabled = busy || !state.opt.loaded || state.opt.saving;
+  });
+}
+
+function renderOptimizerResult() {
+  const { counts, error } = state.opt;
+  const box = $("#optResult");
+  box.classList.toggle("error", Boolean(error));
+  if (error) {
+    box.textContent = error;
+  } else if (counts?.after) {
+    box.textContent = t("opt.result", {
+      before: formatCount(counts.before),
+      after: formatCount(counts.after),
+      percent: reductionPercent(counts.before, counts.after),
+    });
+  } else {
+    box.textContent = t("opt.loading");
+  }
+  $$("#optPresets button").forEach((button) => {
+    button.classList.toggle("active", Number(button.dataset.ratio) === state.opt.ratio);
+  });
+}
+
+function openOptimizer(id) {
+  const asset = state.items.find((item) => item.id === id);
+  if (!canOptimize(asset)) return;
+  state.opt = { id, asset, ratio: OPT_DEFAULT_RATIO, errorLimit: OPT_DEFAULT_ERROR, loaded: false, busy: true, saving: false, counts: null, error: "", dirty: false };
+  $("#optAssetName").textContent = asset.name;
+  $("#optOriginal").textContent = t("opt.original", { name: asset.glb_name || "model.glb", size: formatBytes(asset.glb_size) });
+  $("#optSaveBtn").textContent = t("opt.save");
+  renderOptimizerResult();
+  setOptimizerBusy(true);
+  // Always start from the original GLB so quality never degrades across repeated optimizations.
+  $("#optFrame").src = `/meshpilot/index.html?embed=1&lang=${I18N.current}&t=${Date.now()}`;
+  $("#optOverlay").hidden = false;
+}
+
+function closeOptimizer(force = false) {
+  if (!state.opt) return;
+  if (state.opt.saving) return;
+  if (!force && state.opt.dirty && !window.confirm(t("opt.confirmClose"))) return;
+  $("#optOverlay").hidden = true;
+  $("#optFrame").src = "about:blank";
+  state.opt = null;
+}
+
+function handleOptimizerMessage(event) {
+  if (!state.opt || event.origin !== location.origin || event.source !== $("#optFrame").contentWindow) return;
+  const data = event.data || {};
+  if (data.source !== "meshpilot") return;
+  const opt = state.opt;
+  if (data.type === "ready") {
+    optimizerMessage({ type: "load", url: opt.asset.glb_url, name: opt.asset.glb_name || "model.glb", ratio: opt.ratio, error: opt.errorLimit });
+  } else if (data.type === "busy") {
+    setOptimizerBusy(data.busy);
+  } else if (data.type === "loaded" || data.type === "result") {
+    opt.loaded = true;
+    opt.error = "";
+    opt.counts = data;
+    if (data.type === "result") opt.dirty = true;
+    renderOptimizerResult();
+    setOptimizerBusy(opt.busy);
+  } else if (data.type === "error") {
+    if (opt.saving) finishSave(false);
+    opt.error = data.message || t("opt.failed");
+    renderOptimizerResult();
+    toast(opt.error, "error");
+  } else if (data.type === "exported") {
+    uploadOptimized(data);
+  }
+}
+
+async function saveOptimized() {
+  const opt = state.opt;
+  if (!opt || opt.busy || opt.saving || !opt.counts?.after) return;
+  opt.saving = true;
+  setOptimizerBusy(true);
+  $("#optSaveBtn").textContent = t("opt.exporting");
+  optimizerMessage({ type: "export" });
+}
+
+function finishSave(ok) {
+  if (!state.opt) return;
+  state.opt.saving = false;
+  $("#optSaveBtn").textContent = t("opt.save");
+  setOptimizerBusy(state.opt.busy);
+  if (ok) {
+    state.opt.dirty = false;
+    closeOptimizer(true);
+  }
+}
+
+async function uploadOptimized(data) {
+  const opt = state.opt;
+  if (!opt) return;
+  const button = $("#optSaveBtn");
+  try {
+    const base = (opt.asset.glb_name || "model.glb").replace(/\.glb$/i, "");
+    const file = new File([data.buffer], `${base}-optimized.glb`, { type: "model/gltf-binary" });
+    const sign = await apiFetch("/api/uploads/presign", {
+      method: "POST",
+      json: { kind: "glb", filename: file.name, size: file.size },
+    });
+    await uploadToStorage(sign, file, (loaded, total) => {
+      button.textContent = t("editor.uploading", { percent: Math.min(99, Math.floor((loaded / total) * 100)) });
+    });
+    button.textContent = t("editor.saving");
+    await apiFetch(`/api/assets/${opt.id}/optimized`, {
+      method: "POST",
+      json: { key: sign.key, triangles_before: data.before, triangles_after: data.after },
+    });
+    toast(t("opt.saved", { percent: reductionPercent(data.before, data.after), size: formatBytes(file.size) }));
+    finishSave(true);
+    await loadAssets();
+  } catch (error) {
+    toast(error.message, "error");
+    finishSave(false);
+  }
+}
+
+async function deleteOptimized() {
+  const asset = state.items.find((item) => item.id === state.detailId);
+  if (!asset?.has_opt || !window.confirm(t("opt.confirmDelete", { name: asset.name }))) return;
+  try {
+    await apiFetch(`/api/assets/${asset.id}/optimized`, { method: "DELETE" });
+    toast(t("opt.deleted"));
+    await loadAssets();
+    state.detailVersion = "opt";
+    openDetail(asset.id);
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+function bindOptimizerEvents() {
+  window.addEventListener("message", handleOptimizerMessage);
+  $("#optPresets").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-ratio]");
+    if (!button || !state.opt || state.opt.busy) return;
+    state.opt.ratio = Number(button.dataset.ratio);
+    state.opt.errorLimit = Number(button.dataset.error);
+    state.opt.error = "";
+    renderOptimizerResult();
+    optimizerMessage({ type: "preset", ratio: state.opt.ratio, error: state.opt.errorLimit });
+  });
+  $("#optSaveBtn").addEventListener("click", saveOptimized);
+  $("#optCancelBtn").addEventListener("click", () => closeOptimizer());
+  $("#optCloseBtn").addEventListener("click", () => closeOptimizer());
 }
 
 function closeDetail() {
@@ -1243,7 +1460,7 @@ function bindEvents() {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(reloadFromFirstPage, 250);
   });
-  ["#categoryFilter", "#statusFilter", "#sortSelect"].forEach((selector) => {
+  ["#categoryFilter", "#statusFilter", "#sortSelect", "#optimizedFilter"].forEach((selector) => {
     $(selector).addEventListener("change", reloadFromFirstPage);
   });
   $("#tagBarList").addEventListener("click", (event) => {
@@ -1266,6 +1483,7 @@ function bindEvents() {
     $("#searchInput").value = "";
     $("#categoryFilter").value = "";
     $("#statusFilter").value = "";
+    $("#optimizedFilter").value = "";
     $("#sortSelect").value = "created_desc";
     state.method = "";
     reloadFromFirstPage();
@@ -1426,6 +1644,19 @@ function bindEvents() {
 
   $("#closeDetailBtn").addEventListener("click", closeDetail);
   $("#detailCloseBtn").addEventListener("click", closeDetail);
+  $("#versionSwitch").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-version]");
+    if (!button || !state.detailId || button.dataset.version === state.detailVersion) return;
+    state.detailVersion = button.dataset.version;
+    openDetail(state.detailId);
+  });
+  $("#detailOptimizeBtn").addEventListener("click", () => {
+    const id = state.detailId;
+    closeDetail();
+    openOptimizer(id);
+  });
+  $("#detailDeleteOptBtn").addEventListener("click", deleteOptimized);
+  bindOptimizerEvents();
   $("#detailOverlay").addEventListener("mousedown", (event) => {
     if (event.target.id === "detailOverlay") closeDetail();
   });
@@ -1460,7 +1691,8 @@ function bindEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (!$("#accountOverlay").hidden) closeAccount();
+    if (!$("#optOverlay").hidden) closeOptimizer();
+    else if (!$("#accountOverlay").hidden) closeAccount();
     else if (!$("#imageOverlay").hidden) closeImagePreview();
     else if (!$("#helpOverlay").hidden) $("#helpOverlay").hidden = true;
     else if (!$("#detailOverlay").hidden) closeDetail();

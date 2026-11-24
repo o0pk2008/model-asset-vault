@@ -234,6 +234,12 @@ SCHEMA = [
 COLUMN_MIGRATIONS = [
     ("assets", "method", "TEXT NOT NULL DEFAULT 'ai'"),
     ("assets", "ai_tool", "TEXT NOT NULL DEFAULT ''"),
+    # MeshPilot 减面优化版: kept next to the original GLB, never replacing it.
+    ("assets", "glb_opt_key", "TEXT"),
+    ("assets", "glb_opt_size", "BIGINT NOT NULL DEFAULT 0"),
+    ("assets", "glb_opt_at", "TEXT"),
+    ("assets", "tri_before", "INTEGER NOT NULL DEFAULT 0"),
+    ("assets", "tri_after", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
