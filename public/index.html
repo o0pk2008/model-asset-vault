@@ -468,9 +468,12 @@
         <button class="slideshow-arrow slideshow-next" id="slideshowNext" type="button" data-i18n-aria="slideshow.next" aria-label="下一个模型" hidden>›</button>
       </div>
       <footer class="slideshow-footer">
-        <div class="slideshow-caption" aria-live="polite" aria-atomic="true">
-          <h3 class="slideshow-name" id="slideshowName"></h3>
-          <p class="slideshow-meta" id="slideshowMeta"></p>
+        <div class="slideshow-summary">
+          <div class="slideshow-caption" aria-live="polite" aria-atomic="true">
+            <h3 class="slideshow-name" id="slideshowName"></h3>
+            <p class="slideshow-meta" id="slideshowMeta"></p>
+          </div>
+          <button class="btn btn-mini btn-danger-text" id="slideshowTrash" type="button" data-i18n="trash.move" hidden>移到回收站</button>
         </div>
         <div class="slideshow-controls" id="slideshowControls" hidden>
           <label><input id="slideshowRotate" type="checkbox" checked> <span data-i18n="card.autoRotate">自动旋转</span></label>

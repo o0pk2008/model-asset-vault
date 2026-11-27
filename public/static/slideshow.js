@@ -1,4 +1,4 @@
-function bindSlideshow({ query, apiFetch, t }) {
+function bindSlideshow({ query, apiFetch, canTrash, onTrashed, t }) {
   const dialog = document.querySelector("#slideshow");
   const frame = dialog.querySelector("#slideshowFrame");
   const fullscreen = dialog.querySelector("#slideshowFullscreen");
@@ -8,6 +8,7 @@ function bindSlideshow({ query, apiFetch, t }) {
   const name = dialog.querySelector("#slideshowName");
   const meta = dialog.querySelector("#slideshowMeta");
   const controls = dialog.querySelector("#slideshowControls");
+  const trash = dialog.querySelector("#slideshowTrash");
   const previous = dialog.querySelector("#slideshowPrev");
   const next = dialog.querySelector("#slideshowNext");
   const rotate = dialog.querySelector("#slideshowRotate");
@@ -29,6 +30,7 @@ function bindSlideshow({ query, apiFetch, t }) {
   let pending;
   let swipe;
   let whiteMode = false;
+  let trashing = false;
 
   function position(from, direction) {
     for (let count = 1; count <= items.length; count++) {
@@ -38,15 +40,15 @@ function bindSlideshow({ query, apiFetch, t }) {
     return null;
   }
 
-  function setStatus(key) {
-    status.textContent = key ? t(key) : "";
-    status.hidden = !key;
+  function setStatus(key, message = key ? t(key) : "") {
+    status.textContent = message;
+    status.hidden = !message;
   }
 
   function schedule() {
     clearTimeout(timer);
     const slide = slides.get(index);
-    if (!dialog.open || !play.checked || pending || items.length - unavailable.size < 2 || !slide || slide.status === "loading") return;
+    if (!dialog.open || trashing || !play.checked || pending || items.length - unavailable.size < 2 || !slide || slide.status === "loading") return;
     timer = setTimeout(() => move(1), Number(interval.value) * 1000);
   }
 
@@ -61,6 +63,7 @@ function bindSlideshow({ query, apiFetch, t }) {
     previous.hidden = next.hidden = play.disabled = interval.disabled = total < 2;
     const asset = items[index];
     const slide = slides.get(index);
+    trash.disabled = trashing || unavailable.has(index) || slide?.status === "loading";
     const skipped = [...unavailable].filter((slideIndex) => slideIndex < index).length;
     name.textContent = asset.name;
     meta.textContent = [
@@ -242,7 +245,7 @@ function bindSlideshow({ query, apiFetch, t }) {
     const direction = pending?.index === slideIndex ? pending.direction : 0;
     unavailable.add(slideIndex);
     if (direction) cancelPending();
-    if (swipe?.from !== slideIndex) removeSlide(slideIndex);
+    if (slides.has(slideIndex) && swipe?.from !== slideIndex) removeSlide(slideIndex);
     if (unavailable.size === items.length) {
       controls.hidden = previous.hidden = next.hidden = true;
       name.textContent = "";
@@ -258,7 +261,7 @@ function bindSlideshow({ query, apiFetch, t }) {
   }
 
   function move(direction, from = pending?.index ?? index) {
-    if (!dialog.open || !items.length) return;
+    if (!dialog.open || trashing || !items.length) return;
     clearTimeout(timer);
     cancelPending();
     const target = position(from, direction);
@@ -291,6 +294,44 @@ function bindSlideshow({ query, apiFetch, t }) {
           schedule();
         }
       });
+  }
+
+  async function trashCurrent() {
+    const asset = items[index];
+    if (!asset || trash.disabled || !canTrash()) return;
+    if (!window.confirm(t("confirm.delete", { name: asset.name }))) return;
+
+    const session = queueRequest;
+    trashing = trash.disabled = version.disabled = true;
+    clearTimeout(timer);
+    cancelPending();
+    setStatus("trash.working");
+    let error;
+    try {
+      await apiFetch(`/api/assets/${asset.id}`, { method: "DELETE" });
+    } catch (failure) {
+      error = failure;
+    } finally {
+      trashing = version.disabled = false;
+    }
+
+    if (error && error.status !== 404) {
+      if (dialog.open && queueRequest === session && !unavailable.has(index)) {
+        updateCaption();
+        setStatus("", error.message);
+      }
+      schedule();
+      return;
+    }
+
+    const removed = items.findIndex((item) => item.id === asset.id);
+    if (dialog.open && removed !== -1 && !unavailable.has(removed)) {
+      markUnavailable(removed);
+    } else if (dialog.open && slides.has(index)) {
+      updateCaption();
+      schedule();
+    }
+    onTrashed();
   }
 
   function isFullscreen() {
@@ -348,6 +389,7 @@ function bindSlideshow({ query, apiFetch, t }) {
     name.textContent = "";
     meta.textContent = "";
     controls.hidden = previous.hidden = next.hidden = true;
+    trash.hidden = !canTrash();
     rotate.checked = true;
     play.checked = false;
     reveal.checked = false;
@@ -397,6 +439,7 @@ function bindSlideshow({ query, apiFetch, t }) {
   background.addEventListener("click", () => setDark(!dialog.classList.contains("black-background")));
   previous.addEventListener("click", () => move(-1));
   next.addEventListener("click", () => move(1));
+  trash.addEventListener("click", trashCurrent);
   normal.addEventListener("click", () => {
     whiteMode = false;
     syncMode();

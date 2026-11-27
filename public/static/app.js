@@ -1849,7 +1849,7 @@ async function boot() {
   document.body.classList.remove("booting");
   renderUser();
   bindEvents();
-  bindSlideshow({ query: currentQuery, apiFetch, t });
+  bindSlideshow({ query: currentQuery, apiFetch, canTrash: () => can("delete"), onTrashed: loadAssets, t });
   bindTrash({ apiFetch, loadAssets, t });
   bindAccountEvents();
   loadAssets();
