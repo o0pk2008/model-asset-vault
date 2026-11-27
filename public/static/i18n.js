@@ -205,6 +205,8 @@
       "trash.retryPurge": "重试彻底删除",
       "trash.confirmPurge": "彻底删除「{name}」及其存储文件？此操作无法撤销。",
       "trash.restoreBlocked": "该资产已开始彻底删除，无法恢复。",
+      "trash.editBlocked": "该资产已开始彻底删除，无法修改。",
+      "trash.actionUnavailable": "当前资产已无法执行此操作。",
       "trash.storageFailed": "存储文件未完全删除，请检查存储权限后重试。",
 
       "error.fileTooLarge": "文件过大，请上传小于 1GB 的文件",
@@ -535,6 +537,8 @@
       "trash.retryPurge": "Retry permanent deletion",
       "trash.confirmPurge": "Permanently delete \"{name}\" and its stored files? This cannot be undone.",
       "trash.restoreBlocked": "This asset cannot be restored after permanent deletion has started.",
+      "trash.editBlocked": "This asset cannot be modified after permanent deletion has started.",
+      "trash.actionUnavailable": "This action is no longer available for the asset.",
       "trash.storageFailed": "Some stored files could not be deleted. Check storage permissions and retry.",
 
       "error.fileTooLarge": "File too large. Please upload a file smaller than 1 GB.",
@@ -673,6 +677,7 @@
     ["请填写模型名称", "toast.nameRequired"],
     ["资产不存在", "toast.notFound"],
     ["该资产已开始彻底删除，无法恢复", "trash.restoreBlocked"],
+    ["该资产已开始彻底删除，无法修改", "trash.editBlocked"],
     ["存储文件未完全删除，请检查存储权限后重试", "trash.storageFailed"],
     ["该资产没有 GLB 文件", "error.noGlb"],
     ["文件过大，请上传小于 1GB 的文件", "error.fileTooLarge"],

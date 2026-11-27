@@ -75,6 +75,17 @@ def get_asset(asset_id: int, *, trashed: bool = False, lock: bool = False) -> di
     return db.one(f"SELECT * FROM assets WHERE {condition}{suffix}", (asset_id,))
 
 
+def get_working_asset(asset_id: int, *, trashed: bool, lock: bool = False) -> dict:
+    if trashed and not has_perm(g.user, "delete"):
+        raise ApiError("没有权限执行此操作", 403)
+    asset = get_asset(asset_id, trashed=trashed, lock=lock)
+    if asset is None:
+        raise ApiError("资产不存在", 404)
+    if trashed and asset["purge_started"]:
+        raise ApiError("该资产已开始彻底删除，无法修改", 409)
+    return asset
+
+
 def method_value(value) -> str:
     method = str(value or "").strip()
     if method not in METHODS:
@@ -372,11 +383,10 @@ def create_asset():
 
 
 @bp.put("/assets/<int:asset_id>")
+@bp.put("/assets/trash/<int:asset_id>", defaults={"trashed": True})
 @login_required
-def update_asset(asset_id: int):
-    existing = get_asset(asset_id, lock=True)
-    if existing is None:
-        raise ApiError("资产不存在", 404)
+def update_asset(asset_id: int, trashed: bool = False):
+    existing = get_working_asset(asset_id, trashed=trashed, lock=True)
     scope = can_edit_asset(g.user, existing)
     if not scope:
         raise ApiError("没有权限执行此操作", 403)
@@ -457,7 +467,7 @@ def update_asset(asset_id: int):
     if glb_key != existing["glb_key"] and existing.get("glb_opt_key"):
         old_keys.append(existing["glb_opt_key"])
         clear_optimized(asset_id)
-    updated = get_asset(asset_id)
+    updated = get_asset(asset_id, trashed=trashed)
     get_db().commit()
     storage.delete_objects(cfg, old_keys)
     detail = "上传 GLB" if glb_key and glb_key != existing["glb_key"] else ""
@@ -506,12 +516,11 @@ def _triangles(value) -> int:
 
 
 @bp.post("/assets/<int:asset_id>/optimized")
+@bp.post("/assets/trash/<int:asset_id>/optimized", defaults={"trashed": True})
 @permission_required("edit")
-def save_optimized(asset_id: int):
+def save_optimized(asset_id: int, trashed: bool = False):
     """Store a MeshPilot-simplified GLB next to the original (the original is never replaced)."""
-    existing = get_asset(asset_id, lock=True)
-    if existing is None:
-        raise ApiError("资产不存在", 404)
+    existing = get_working_asset(asset_id, trashed=trashed, lock=True)
     if not existing["glb_key"]:
         raise ApiError("该资产没有 GLB 文件")
     data = body()
@@ -525,7 +534,7 @@ def save_optimized(asset_id: int):
         "updated_by = ? WHERE id = ?",
         (key, size, config.now_text(), before, after, g.user["id"], asset_id),
     )
-    updated = get_asset(asset_id)
+    updated = get_asset(asset_id, trashed=trashed)
     get_db().commit()
     if old_key:
         storage.delete_objects(cfg, [old_key])
@@ -577,11 +586,29 @@ def list_trashed_assets():
     pages = max(1, -(-total // DEFAULT_PAGE_SIZE))
     page = max(1, min(page, pages))
     rows = db.all(
-        "SELECT id, name, code, deleted_at, purge_started FROM assets WHERE deleted_at IS NOT NULL "
+        "SELECT id, name, code, status, created_by, deleted_at, purge_started, photo_key, screenshot_key, glb_key, "
+        "glb_opt_key FROM assets WHERE deleted_at IS NOT NULL "
         "ORDER BY deleted_at DESC, id DESC LIMIT ? OFFSET ?",
         (DEFAULT_PAGE_SIZE, (page - 1) * DEFAULT_PAGE_SIZE),
     )
-    return jsonify({"items": rows, "page": page, "pages": pages})
+    cfg = storage_cfg()
+    items = []
+    for row in rows:
+        item = {field: row[field] for field in ("id", "name", "code", "status", "deleted_at", "purge_started")}
+        if not row["purge_started"]:
+            item["edit_scope"] = can_edit_asset(g.user, row) or ""
+            item["has_glb"] = bool(row["glb_key"])
+            item["has_opt"] = item["has_glb"] and bool(row["glb_opt_key"])
+            for field in ("photo", "screenshot"):
+                item[f"{field}_url"] = storage.file_url(cfg, row[f"{field}_key"])
+        items.append(item)
+    return jsonify({"items": items, "page": page, "pages": pages})
+
+
+@bp.get("/assets/trash/<int:asset_id>")
+@permission_required("delete")
+def read_trashed_asset(asset_id: int):
+    return jsonify(asset_to_dict(get_working_asset(asset_id, trashed=True)))
 
 
 @bp.post("/assets/<int:asset_id>/restore")

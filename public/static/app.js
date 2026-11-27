@@ -23,6 +23,9 @@ const state = {
   items: [],
   stats: {},
   editingId: null,
+  editingAsset: null,
+  editorReturn: null,
+  editorSaving: false,
   detailId: null,
   editorMode: "create",
   activePasteField: null,
@@ -737,16 +740,27 @@ function clearFiles() {
 const EMPTY_IMAGE =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='220'%3E%3Crect width='300' height='220' fill='%23eef1f7'/%3E%3C/svg%3E";
 
-function openEditor(id = null, mode = id ? "edit" : "create") {
+function assetEndpoint(asset) {
+  return asset.deleted_at ? `/api/assets/trash/${asset.id}` : `/api/assets/${asset.id}`;
+}
+
+function openEditor(id = null, mode = id ? "edit" : "create", context) {
+  if (state.editorSaving) return;
+  const asset = context?.asset ?? state.items.find((item) => item.id === id);
+  if (id && !asset) {
+    toast(t("toast.notFound"), "error");
+    return;
+  }
   clearFiles();
   state.editingId = id;
+  state.editingAsset = asset;
+  state.editorReturn = context?.onClose;
   state.editorMode = mode;
   $("#assetForm").reset();
 
   const isCompletion = mode === "completion";
   const isCreate = mode === "create";
-  const editingAsset = id ? state.items.find((item) => item.id === id) : null;
-  const ownerOnly = editingAsset?.edit_scope === "owner";
+  const ownerOnly = asset?.edit_scope === "owner";
   state.ownerOnly = ownerOnly;
   $("#editorModeSwitch").hidden = !id || ownerOnly;
   $$("#editorModeSwitch button").forEach((button) => {
@@ -765,11 +779,6 @@ function openEditor(id = null, mode = id ? "edit" : "create") {
   refreshEditorLabels();
 
   if (id) {
-    const asset = state.items.find((item) => item.id === id);
-    if (!asset) {
-      toast(t("toast.notFound"), "error");
-      return;
-    }
     $("#assetId").value = asset.id;
     $("#nameInput").value = asset.name || "";
     $("#codeInput").value = asset.code || "";
@@ -826,9 +835,13 @@ function openEditor(id = null, mode = id ? "edit" : "create") {
 }
 
 function closeEditor() {
+  if (state.editorSaving) return;
+  const onClose = state.editorReturn;
+  state.editorReturn = null;
   $("#editorOverlay").hidden = true;
   state.editorMode = "create";
   clearFiles();
+  onClose?.();
 }
 
 function refreshEditorLabels() {
@@ -852,7 +865,7 @@ function refreshEditorLabels() {
   $("#fileSectionTitle").querySelector("small").textContent = isCompletion
     ? t("editor.fileCompletionHint")
     : t("editor.fileHint");
-  const asset = state.items.find((item) => item.id === state.editingId);
+  const asset = state.editingAsset;
   $("#statusReadonly").textContent = I18N.status(asset?.status || "待制作");
   renderAllUploads();
 }
@@ -1089,6 +1102,8 @@ async function uploadPendingFiles(button) {
 }
 
 async function saveAsset() {
+  if (state.editorSaving) return;
+  const asset = state.editingAsset;
   const mode = state.editorMode;
   if (mode !== "completion" && !$("#nameInput").value.trim()) {
     toast(t("toast.nameRequired"), "error");
@@ -1118,7 +1133,7 @@ async function saveAsset() {
   }
 
   const button = $("#saveAssetBtn");
-  button.disabled = true;
+  state.editorSaving = button.disabled = true;
   button.textContent = t("editor.saving");
   try {
     const uploaded = await uploadPendingFiles(button);
@@ -1127,7 +1142,7 @@ async function saveAsset() {
       else if (state.removed[field]) payload[field] = null;
     });
     button.textContent = t("editor.saving");
-    const url = state.editingId ? `/api/assets/${state.editingId}` : "/api/assets";
+    const url = asset ? assetEndpoint(asset) : "/api/assets";
     await apiFetch(url, { method: state.editingId ? "PUT" : "POST", json: payload });
     toast(
       mode === "completion"
@@ -1136,12 +1151,13 @@ async function saveAsset() {
           ? t("toast.updated")
           : t("toast.created")
     );
+    state.editorSaving = false;
     closeEditor();
-    await loadAssets();
+    if (!asset?.deleted_at) await loadAssets();
   } catch (error) {
     toast(error.message, "error");
   } finally {
-    button.disabled = false;
+    state.editorSaving = button.disabled = false;
     button.textContent = mode === "completion"
       ? t("editor.saveCompletion")
       : state.editingId
@@ -1288,10 +1304,10 @@ function renderOptimizerResult() {
   });
 }
 
-function openOptimizer(id) {
-  const asset = state.items.find((item) => item.id === id);
+function openOptimizer(id, context) {
+  const asset = context?.asset ?? state.items.find((item) => item.id === id);
   if (!canOptimize(asset)) return;
-  state.opt = { id, asset, ratio: OPT_DEFAULT_RATIO, errorLimit: OPT_DEFAULT_ERROR, loaded: false, busy: true, saving: false, counts: null, error: "", dirty: false };
+  state.opt = { asset, onClose: context?.onClose, ratio: OPT_DEFAULT_RATIO, errorLimit: OPT_DEFAULT_ERROR, loaded: false, busy: true, saving: false, counts: null, error: "", dirty: false };
   $("#optAssetName").textContent = asset.name;
   $("#optOriginal").textContent = t("opt.original", { name: asset.glb_name || "model.glb", size: formatBytes(asset.glb_size) });
   $("#optSaveBtn").textContent = t("opt.save");
@@ -1308,7 +1324,9 @@ function closeOptimizer(force = false) {
   if (!force && state.opt.dirty && !window.confirm(t("opt.confirmClose"))) return;
   $("#optOverlay").hidden = true;
   $("#optFrame").src = "about:blank";
+  const onClose = state.opt.onClose;
   state.opt = null;
+  onClose?.();
 }
 
 function handleOptimizerMessage(event) {
@@ -1372,13 +1390,13 @@ async function uploadOptimized(data) {
       button.textContent = t("editor.uploading", { percent: Math.min(99, Math.floor((loaded / total) * 100)) });
     });
     button.textContent = t("editor.saving");
-    await apiFetch(`/api/assets/${opt.id}/optimized`, {
+    await apiFetch(`${assetEndpoint(opt.asset)}/optimized`, {
       method: "POST",
       json: { key: sign.key, triangles_before: data.before, triangles_after: data.after },
     });
     toast(t("opt.saved", { percent: reductionPercent(data.before, data.after), size: formatBytes(file.size) }));
     finishSave(true);
-    await loadAssets();
+    if (!opt.asset.deleted_at) await loadAssets();
   } catch (error) {
     toast(error.message, "error");
     finishSave(false);
@@ -1582,7 +1600,7 @@ function bindEvents() {
   $("#editorModeSwitch").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-editor-mode]");
     if (!button || !state.editingId) return;
-    openEditor(state.editingId, button.dataset.editorMode);
+    openEditor(state.editingId, button.dataset.editorMode, { asset: state.editingAsset, onClose: state.editorReturn });
   });
 
   $("#closeImageBtn").addEventListener("click", closeImagePreview);
@@ -1850,7 +1868,14 @@ async function boot() {
   renderUser();
   bindEvents();
   bindSlideshow({ query: currentQuery, apiFetch, canTrash: () => can("delete"), onTrashed: loadAssets, t });
-  bindTrash({ apiFetch, loadAssets, t });
+  bindTrash({
+    apiFetch,
+    loadAssets,
+    editAsset: (asset, onClose) => openEditor(asset.id, "edit", { asset, onClose }),
+    optimizeAsset: (asset, onClose) => openOptimizer(asset.id, { asset, onClose }),
+    canOptimize,
+    t,
+  });
   bindAccountEvents();
   loadAssets();
 }
