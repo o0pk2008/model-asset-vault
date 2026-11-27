@@ -14,6 +14,7 @@ function bindSlideshow({ query, apiFetch, t }) {
   const play = dialog.querySelector("#slideshowPlay");
   const interval = dialog.querySelector("#slideshowInterval");
   const intervalValue = dialog.querySelector("#slideshowIntervalValue");
+  const version = dialog.querySelector("#slideshowModelVersion");
   const normal = dialog.querySelector("#slideshowNormal");
   const white = dialog.querySelector("#slideshowWhite");
   const reveal = dialog.querySelector("#slideshowReveal");
@@ -59,10 +60,14 @@ function bindSlideshow({ query, apiFetch, t }) {
     const total = items.length - unavailable.size;
     previous.hidden = next.hidden = play.disabled = interval.disabled = total < 2;
     const asset = items[index];
+    const slide = slides.get(index);
     const skipped = [...unavailable].filter((slideIndex) => slideIndex < index).length;
     name.textContent = asset.name;
-    meta.textContent = [asset.code, t("slideshow.position", { current: index + 1 - skipped, total })]
-      .filter(Boolean).join(" · ");
+    meta.textContent = [
+      asset.code,
+      t("slideshow.position", { current: index + 1 - skipped, total }),
+      slide?.status === "ready" ? t(slide.versionLabel) : "",
+    ].filter(Boolean).join(" · ");
   }
 
   function syncMode() {
@@ -113,6 +118,7 @@ function bindSlideshow({ query, apiFetch, t }) {
   function showCurrentStatus() {
     const slide = slides.get(index);
     const key = { loading: "detail.loading", error: "toast.glbFailed", ready: "" }[slide.status];
+    updateCaption();
     if (!pending) setStatus(key);
     schedule();
     keepNearby();
@@ -137,6 +143,7 @@ function bindSlideshow({ query, apiFetch, t }) {
     element.append(viewer);
 
     const request = new AbortController();
+    const preferOptimized = version.value === "opt";
     const slide = { element, viewer, request, status: "loading" };
     slides.set(slideIndex, slide);
 
@@ -158,7 +165,9 @@ function bindSlideshow({ query, apiFetch, t }) {
     apiFetch(`/api/assets/${asset.id}`, { signal: request.signal })
       .then((data) => {
         if (request.signal.aborted) return;
-        const url = data.glb_opt_url || data.glb_url;
+        const optimizedUrl = preferOptimized ? data.glb_opt_url : "";
+        const url = optimizedUrl || data.glb_url;
+        slide.versionLabel = optimizedUrl ? "opt.versionOpt" : "slideshow.originalVersion";
         if (url) viewer.setAttribute("src", url);
         else settle("error");
       })
@@ -174,6 +183,12 @@ function bindSlideshow({ query, apiFetch, t }) {
     slide.element.inert = !active;
     slide.element.setAttribute("aria-hidden", String(!active));
     slide.viewer.toggleAttribute("auto-rotate", active && rotate.checked);
+  }
+
+  function loadCurrent() {
+    ensureSlide(index);
+    activate(slides.get(index), true);
+    showCurrentStatus();
   }
 
   function presentPending() {
@@ -194,7 +209,6 @@ function bindSlideshow({ query, apiFetch, t }) {
       activate(old, false);
     }
     activate(slide, true);
-    updateCaption();
 
     if (animate) {
       const offset = direction * 100;
@@ -250,7 +264,6 @@ function bindSlideshow({ query, apiFetch, t }) {
     const target = position(from, direction);
     if (target === null) return;
     if (target === index) {
-      updateCaption();
       showCurrentStatus();
       return;
     }
@@ -313,14 +326,18 @@ function bindSlideshow({ query, apiFetch, t }) {
     background.setAttribute("aria-pressed", String(dark));
   }
 
-  function reset() {
+  function clearSlides() {
     clearTimeout(timer);
-    queueRequest?.abort();
     cancelPending();
     swipe?.incoming.cancel();
     swipe?.outgoing.cancel();
     swipe = null;
     for (const slideIndex of slides.keys()) removeSlide(slideIndex);
+  }
+
+  function reset() {
+    queueRequest?.abort();
+    clearSlides();
     unavailable.clear();
     items = [];
     index = 0;
@@ -335,6 +352,7 @@ function bindSlideshow({ query, apiFetch, t }) {
     play.checked = false;
     reveal.checked = false;
     whiteMode = false;
+    version.value = "opt";
     interval.value = "5";
     refreshInterval();
     syncMode();
@@ -356,10 +374,7 @@ function bindSlideshow({ query, apiFetch, t }) {
         return;
       }
       controls.hidden = false;
-      ensureSlide(index);
-      activate(slides.get(index), true);
-      updateCaption();
-      showCurrentStatus();
+      loadCurrent();
     } catch {
       if (!request.signal.aborted && dialog.open) setStatus("slideshow.queueError");
     }
@@ -397,6 +412,13 @@ function bindSlideshow({ query, apiFetch, t }) {
     slides.get(index)?.viewer.toggleAttribute("auto-rotate", rotate.checked);
   });
   play.addEventListener("change", schedule);
+  version.addEventListener("change", () => {
+    const current = unavailable.has(index) ? position(index, 1) : index;
+    if (current === null || !items.length) return;
+    clearSlides();
+    index = current;
+    loadCurrent();
+  });
   interval.addEventListener("input", () => {
     refreshInterval();
     schedule();

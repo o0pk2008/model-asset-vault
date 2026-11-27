@@ -480,6 +480,13 @@
             <input id="slideshowInterval" type="range" min="1" max="5" step="0.5" value="5">
             <output id="slideshowIntervalValue" for="slideshowInterval" aria-hidden="true">5 秒</output>
           </label>
+          <label>
+            <span data-i18n="slideshow.modelVersion">模型版本</span>
+            <select id="slideshowModelVersion">
+              <option value="opt" data-i18n="slideshow.preferOptimized">优化版优先</option>
+              <option value="orig" data-i18n="slideshow.originalVersion">原始版</option>
+            </select>
+          </label>
           <div class="view-switch" role="group" data-i18n-aria="slideshow.displayMode" aria-label="显示模式">
             <button type="button" id="slideshowNormal" class="active" aria-pressed="true" data-i18n="slideshow.normal">普通</button>
             <button type="button" id="slideshowWhite" aria-pressed="false" data-i18n="slideshow.white">白模</button>
