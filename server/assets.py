@@ -9,7 +9,7 @@ from flask import Blueprint, abort, g, jsonify, redirect, request, send_file
 from . import config, storage
 from .audit import log_action
 from .auth import ApiError, body, has_perm, login_required, permission_required
-from .db import get_db
+from .db import IS_PG, get_db
 
 bp = Blueprint("assets", __name__, url_prefix="/api")
 
@@ -65,8 +65,14 @@ def asset_to_dict(row: dict) -> dict:
     return data
 
 
-def get_asset(asset_id: int) -> dict | None:
-    return get_db().one("SELECT * FROM assets WHERE id = ?", (asset_id,))
+def get_asset(asset_id: int, *, trashed: bool = False, lock: bool = False) -> dict | None:
+    db = get_db()
+    condition = "id = ? AND deleted_at IS NOT NULL" if trashed else "id = ? AND deleted_at IS NULL"
+    if lock and not IS_PG:
+        # SQLite has no row locks. Take a write lock before reading data for a mutation.
+        db.execute(f"UPDATE assets SET id = id WHERE {condition}", (asset_id,))
+    suffix = " FOR UPDATE" if lock and IS_PG else ""
+    return db.one(f"SELECT * FROM assets WHERE {condition}{suffix}", (asset_id,))
 
 
 def method_value(value) -> str:
@@ -121,7 +127,7 @@ def asset_list_filters(*, models_only: bool = False) -> tuple[str, list, str]:
     mine = request.args.get("mine") == "1"
     method = (request.args.get("method") or "").strip()
 
-    clauses: list[str] = []
+    clauses = ["deleted_at IS NULL"]
     params: list = []
     if query:
         like = f"%{query}%"
@@ -160,7 +166,7 @@ def asset_list_filters(*, models_only: bool = False) -> tuple[str, list, str]:
     if models_only:
         clauses.append("(glb_key IS NOT NULL AND glb_key != '')")
 
-    where_sql = " WHERE " + " AND ".join(clauses) if clauses else ""
+    where_sql = " WHERE " + " AND ".join(clauses)
     order_map = {
         "updated_desc": "updated_at DESC, id DESC",
         "created_desc": "created_at DESC, id DESC",
@@ -204,15 +210,15 @@ def list_assets():
         "COALESCE(SUM(glb_size), 0) AS total_size, "
         "SUM(CASE WHEN method = 'ai' THEN 1 ELSE 0 END) AS method_ai, "
         "SUM(CASE WHEN method = 'manual' THEN 1 ELSE 0 END) AS method_manual, "
-        "SUM(CASE WHEN method = 'hybrid' THEN 1 ELSE 0 END) AS method_hybrid FROM assets"
+        "SUM(CASE WHEN method = 'hybrid' THEN 1 ELSE 0 END) AS method_hybrid FROM assets WHERE deleted_at IS NULL"
     ) or {}
     categories = [
         row["category"]
-        for row in db.all("SELECT DISTINCT category FROM assets WHERE category != '' ORDER BY category")
+        for row in db.all("SELECT DISTINCT category FROM assets WHERE deleted_at IS NULL AND category != '' ORDER BY category")
     ]
-    last_row = db.one("SELECT name, code, category FROM assets ORDER BY id DESC LIMIT 1")
+    last_row = db.one("SELECT name, code, category FROM assets WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 1")
     tag_counts: Counter = Counter()
-    for tag_row in db.all("SELECT tags FROM assets WHERE tags != ''"):
+    for tag_row in db.all("SELECT tags FROM assets WHERE deleted_at IS NULL AND tags != ''"):
         seen = {tag.strip() for tag in re.split(r"[,，]", tag_row["tags"] or "") if tag.strip()}
         tag_counts.update(seen)
     popular_tags = [{"tag": tag, "count": count} for tag, count in tag_counts.most_common(POPULAR_TAG_LIMIT)]
@@ -233,7 +239,7 @@ def list_assets():
         "methods": {m: int(summary.get(f"method_{m}") or 0) for m in METHODS},
         "aiTools": [
             row["ai_tool"]
-            for row in db.all("SELECT DISTINCT ai_tool FROM assets WHERE ai_tool != '' ORDER BY ai_tool LIMIT 50")
+            for row in db.all("SELECT DISTINCT ai_tool FROM assets WHERE deleted_at IS NULL AND ai_tool != '' ORDER BY ai_tool LIMIT 50")
         ],
         # 术语翻译: stored Chinese tag/category -> English display name.
         "terms": {row["term"]: row["en"] for row in db.all("SELECT term, en FROM term_translations WHERE en != ''")},
@@ -248,6 +254,8 @@ def read_asset(asset_id: int):
     row = get_asset(asset_id)
     if row is None:
         raise ApiError("资产不存在", 404)
+    if request.method == "HEAD":
+        return "", 204
     return jsonify(asset_to_dict(row))
 
 
@@ -366,7 +374,7 @@ def create_asset():
 @bp.put("/assets/<int:asset_id>")
 @login_required
 def update_asset(asset_id: int):
-    existing = get_asset(asset_id)
+    existing = get_asset(asset_id, lock=True)
     if existing is None:
         raise ApiError("资产不存在", 404)
     scope = can_edit_asset(g.user, existing)
@@ -449,11 +457,12 @@ def update_asset(asset_id: int):
     if glb_key != existing["glb_key"] and existing.get("glb_opt_key"):
         old_keys.append(existing["glb_opt_key"])
         clear_optimized(asset_id)
+    updated = get_asset(asset_id)
     get_db().commit()
     storage.delete_objects(cfg, old_keys)
     detail = "上传 GLB" if glb_key and glb_key != existing["glb_key"] else ""
     log_action("asset.update", f"asset:{asset_id}", f"{values['name']} {detail}".strip())
-    return jsonify(asset_to_dict(get_asset(asset_id)))
+    return jsonify(asset_to_dict(updated))
 
 
 @bp.post("/assets/batch-method")
@@ -473,7 +482,7 @@ def batch_set_method():
     placeholders = ", ".join("?" for _ in ids)
     ai_tool_sql = ", ai_tool = ''" if method == "manual" else ""
     cursor = get_db().execute(
-        f"UPDATE assets SET method = ?, updated_by = ?{ai_tool_sql} WHERE id IN ({placeholders})",
+        f"UPDATE assets SET method = ?, updated_by = ?{ai_tool_sql} WHERE deleted_at IS NULL AND id IN ({placeholders})",
         (method, g.user["id"], *ids),
     )
     changed = cursor.rowcount
@@ -500,7 +509,7 @@ def _triangles(value) -> int:
 @permission_required("edit")
 def save_optimized(asset_id: int):
     """Store a MeshPilot-simplified GLB next to the original (the original is never replaced)."""
-    existing = get_asset(asset_id)
+    existing = get_asset(asset_id, lock=True)
     if existing is None:
         raise ApiError("资产不存在", 404)
     if not existing["glb_key"]:
@@ -516,6 +525,7 @@ def save_optimized(asset_id: int):
         "updated_by = ? WHERE id = ?",
         (key, size, config.now_text(), before, after, g.user["id"], asset_id),
     )
+    updated = get_asset(asset_id)
     get_db().commit()
     if old_key:
         storage.delete_objects(cfg, [old_key])
@@ -525,37 +535,89 @@ def save_optimized(asset_id: int):
         f"asset:{asset_id}",
         f"{existing['name']} 面数 {before} → {after}（-{reduction}） 大小 {existing['glb_size']} → {size}",
     )
-    return jsonify(asset_to_dict(get_asset(asset_id)))
+    return jsonify(asset_to_dict(updated))
 
 
 @bp.delete("/assets/<int:asset_id>/optimized")
 @permission_required("edit")
 def delete_optimized(asset_id: int):
-    existing = get_asset(asset_id)
+    existing = get_asset(asset_id, lock=True)
     if existing is None:
         raise ApiError("资产不存在", 404)
     old_key = existing.get("glb_opt_key")
     clear_optimized(asset_id)
+    updated = get_asset(asset_id)
     get_db().commit()
     if old_key:
         storage.delete_objects(storage_cfg(), [old_key])
         log_action("asset.optimize_delete", f"asset:{asset_id}", existing["name"])
-    return jsonify(asset_to_dict(get_asset(asset_id)))
+    return jsonify(asset_to_dict(updated))
 
 
 @bp.delete("/assets/<int:asset_id>")
 @permission_required("delete")
 def delete_asset(asset_id: int):
-    existing = get_asset(asset_id)
+    existing = get_asset(asset_id, lock=True)
     if existing is None:
         raise ApiError("资产不存在", 404)
+    get_db().execute("UPDATE assets SET deleted_at = ? WHERE id = ?", (config.now_text(), asset_id))
+    log_action("asset.trash", f"asset:{asset_id}", existing["name"])
+    return jsonify({"success": True})
+
+
+@bp.get("/assets/trash")
+@permission_required("delete")
+def list_trashed_assets():
     db = get_db()
-    db.execute("DELETE FROM assets WHERE id = ?", (asset_id,))
-    db.commit()
-    storage.delete_objects(
-        storage_cfg(), [existing[f"{field}_key"] for field in FILE_FIELDS] + [existing.get("glb_opt_key")]
+    try:
+        page = int(request.args.get("page") or 1)
+    except ValueError:
+        raise ApiError("分页参数无效")
+    total = int(db.scalar("SELECT COUNT(*) FROM assets WHERE deleted_at IS NOT NULL") or 0)
+    pages = max(1, -(-total // DEFAULT_PAGE_SIZE))
+    page = max(1, min(page, pages))
+    rows = db.all(
+        "SELECT id, name, code, deleted_at, purge_started FROM assets WHERE deleted_at IS NOT NULL "
+        "ORDER BY deleted_at DESC, id DESC LIMIT ? OFFSET ?",
+        (DEFAULT_PAGE_SIZE, (page - 1) * DEFAULT_PAGE_SIZE),
     )
-    log_action("asset.delete", f"asset:{asset_id}", existing["name"])
+    return jsonify({"items": rows, "page": page, "pages": pages})
+
+
+@bp.post("/assets/<int:asset_id>/restore")
+@permission_required("delete")
+def restore_asset(asset_id: int):
+    existing = get_asset(asset_id, trashed=True, lock=True)
+    if existing is None:
+        raise ApiError("资产不存在", 404)
+    if existing["purge_started"]:
+        raise ApiError("该资产已开始彻底删除，无法恢复", 409)
+    get_db().execute("UPDATE assets SET deleted_at = NULL WHERE id = ?", (asset_id,))
+    log_action("asset.restore", f"asset:{asset_id}", existing["name"])
+    return jsonify({"success": True})
+
+
+@bp.delete("/assets/<int:asset_id>/purge")
+@permission_required("delete")
+def purge_asset(asset_id: int):
+    db = get_db()
+    existing = get_asset(asset_id, trashed=True, lock=True)
+    if existing is None:
+        raise ApiError("资产不存在", 404)
+    if not existing["purge_started"]:
+        # Persist this state first. A partial storage deletion must not be restorable.
+        db.execute("UPDATE assets SET purge_started = 1 WHERE id = ?", (asset_id,))
+        db.commit()
+        existing = get_asset(asset_id, trashed=True, lock=True)
+        if existing is None:  # Another request finished the purge.
+            return jsonify({"success": True})
+    keys = [existing[f"{field}_key"] for field in FILE_FIELDS] + [existing["glb_opt_key"]]
+    try:
+        storage.delete_objects(storage_cfg(), keys, strict=True)
+    except storage.StorageError as error:
+        raise ApiError("存储文件未完全删除，请检查存储权限后重试", 502) from error
+    db.execute("DELETE FROM assets WHERE id = ?", (asset_id,))
+    log_action("asset.purge", f"asset:{asset_id}", existing["name"])
     return jsonify({"success": True})
 
 

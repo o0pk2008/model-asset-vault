@@ -172,7 +172,9 @@ async function apiFetch(url, options = {}) {
   }
   if (!response.ok) {
     const message = payload?.error || t("error.request", { status: response.status });
-    throw new Error(I18N.serverError(message));
+    const error = new Error(I18N.serverError(message));
+    error.status = response.status;
+    throw error;
   }
   return payload;
 }
@@ -1641,7 +1643,7 @@ function bindEvents() {
   });
 
   document.addEventListener("paste", (event) => {
-    if ($("#slideshow").open) return;
+    if ($("#slideshow").open || $("#trashDialog").open) return;
     let files = Array.from(event.clipboardData?.files || []);
     if (!files.length) {
       files = Array.from(event.clipboardData?.items || [])
@@ -1723,7 +1725,7 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || $("#slideshow").open) return;
+    if (event.key !== "Escape" || $("#slideshow").open || $("#trashDialog").open) return;
     if (!$("#downloadOverlay").hidden) closeDownloadChoice();
     else if (!$("#optOverlay").hidden) closeOptimizer();
     else if (!$("#accountOverlay").hidden) closeAccount();
@@ -1750,6 +1752,7 @@ function renderUser() {
     .map((perm) => t(`perm.${perm}`));
   $("#userPerms").textContent = labels.length ? `${t("perm.viewDownload")} · ${labels.join(" · ")}` : t("perm.viewOnly");
   $("#createBtn").hidden = !can("create");
+  $("#trashBtn").hidden = !can("delete");
   $("#emptyCreateBtn").hidden = !can("create");
 }
 
@@ -1847,6 +1850,7 @@ async function boot() {
   renderUser();
   bindEvents();
   bindSlideshow({ query: currentQuery, apiFetch, t });
+  bindTrash({ apiFetch, loadAssets, t });
   bindAccountEvents();
   loadAssets();
 }

@@ -275,28 +275,60 @@ def head_size(cfg: dict, key: str) -> int | None:
         raise StorageError(f"读取存储失败：{code}") from error
 
 
-def delete_objects(cfg: dict, keys: list[str]) -> None:
-    keys = [key for key in keys if key]
-    if not keys or cfg["backend"] == "none":
+def delete_objects(cfg: dict, keys: list[str | None], *, strict: bool = False) -> None:
+    keys = list(dict.fromkeys(key for key in keys if key))
+    if not keys:
+        return
+    if cfg["backend"] == "none":
+        if strict:
+            raise StorageError("存储未配置")
         return
     if cfg["backend"] == "local":
         for key in keys:
             try:
                 local_path(key).unlink(missing_ok=True)
-            except (OSError, StorageError):
-                pass
+            except (OSError, StorageError) as error:
+                if strict:
+                    raise StorageError("无法删除本地文件") from error
         return
     try:
         client = s3_client(cfg)
         for start in range(0, len(keys), 1000):
             chunk = keys[start : start + 1000]
-            client.delete_objects(
+            response = client.delete_objects(
                 Bucket=cfg["bucket"],
-                Delete={"Objects": [{"Key": key} for key in chunk], "Quiet": True},
+                Delete={"Objects": [{"Key": key} for key in chunk], "Quiet": not strict},
             )
-    except Exception:
+            if strict:
+                deleted_objects = response.get("Deleted", [])
+                if response.get("Errors") or {item.get("Key") for item in deleted_objects} != set(chunk):
+                    raise StorageError("存储拒绝删除文件")
+                for deleted in deleted_objects:
+                    if deleted.get("DeleteMarker"):
+                        _delete_object_versions(client, cfg["bucket"], deleted["Key"])
+    except Exception as error:
+        if strict:
+            raise StorageError("无法彻底删除存储文件") from error
         # Deleting is best effort; orphans can be cleaned up from the admin panel.
         pass
+
+
+def _delete_object_versions(client, bucket: str, key: str) -> None:
+    versions, markers = [], []
+    for page in client.get_paginator("list_object_versions").paginate(Bucket=bucket, Prefix=key):
+        for group, objects in (("Versions", versions), ("DeleteMarkers", markers)):
+            objects.extend(
+                {"Key": key, "VersionId": item["VersionId"]}
+                for item in page.get(group, []) if item["Key"] == key
+            )
+    # Keep the current delete marker in place until every data version is gone.
+    for objects in (versions, markers):
+        for start in range(0, len(objects), 1000):
+            response = client.delete_objects(
+                Bucket=bucket, Delete={"Objects": objects[start : start + 1000], "Quiet": True}
+            )
+            if response.get("Errors"):
+                raise StorageError("存储拒绝删除文件版本")
 
 
 # ------------------------------------------------------------------ download URLs

@@ -240,6 +240,8 @@ COLUMN_MIGRATIONS = [
     ("assets", "glb_opt_at", "TEXT"),
     ("assets", "tri_before", "INTEGER NOT NULL DEFAULT 0"),
     ("assets", "tri_after", "INTEGER NOT NULL DEFAULT 0"),
+    ("assets", "deleted_at", "TEXT"),
+    ("assets", "purge_started", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -252,6 +254,7 @@ def ensure_columns(db: Database) -> None:
             if column not in existing:
                 db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     db.execute("CREATE INDEX IF NOT EXISTS idx_assets_method ON assets (method)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_assets_deleted ON assets (deleted_at, id)")
 
 
 def ensure_schema(db: Database) -> None:

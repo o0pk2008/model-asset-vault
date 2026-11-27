@@ -36,7 +36,7 @@ def _needs_clause(field: str) -> str:
 def pending_count(db: Database) -> int:
     total = 0
     for field in IMAGE_FIELDS:
-        total += int(db.scalar(f"SELECT COUNT(*) AS n FROM assets WHERE {_needs_clause(field)}", _DONE_PATTERNS) or 0)
+        total += int(db.scalar(f"SELECT COUNT(*) AS n FROM assets WHERE deleted_at IS NULL AND {_needs_clause(field)}", _DONE_PATTERNS) or 0)
     return total
 
 
@@ -51,7 +51,7 @@ def run_batch(db: Database, cfg: dict, after_id: int, time_budget: float = 18.0)
     where = " OR ".join(_needs_clause(field) for field in IMAGE_FIELDS)
     rows = db.all(
         f"SELECT id, photo_key, photo_name, screenshot_key, screenshot_name FROM assets "
-        f"WHERE id > ? AND ({where}) ORDER BY id LIMIT 200",
+        f"WHERE deleted_at IS NULL AND id > ? AND ({where}) ORDER BY id LIMIT 200",
         (after_id, *_DONE_PATTERNS * len(IMAGE_FIELDS)),
     )
     result = {"processed": 0, "failed": 0, "before": 0, "after": 0, "cursor": after_id, "errors": []}
@@ -69,7 +69,7 @@ def run_batch(db: Database, cfg: dict, after_id: int, time_budget: float = 18.0)
                 new_key = storage.new_key(cfg, field, name)
                 storage.write_bytes(cfg, new_key, data, "image/webp")
                 cursor = db.execute(
-                    f"UPDATE assets SET {field}_key = ?, {field}_name = ? WHERE id = ? AND {field}_key = ?",
+                    f"UPDATE assets SET {field}_key = ?, {field}_name = ? WHERE deleted_at IS NULL AND id = ? AND {field}_key = ?",
                     (new_key, name, row["id"], key),
                 )
                 db.commit()

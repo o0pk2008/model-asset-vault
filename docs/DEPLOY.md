@@ -33,6 +33,8 @@
 
 CORS 不需要手动配置，部署后在管理后台一键写入即可。
 
+如果 S3 已启用或暂停版本控制，应用账号需要额外的 `s3:ListBucketVersions`（桶）和 `s3:DeleteObjectVersion`（资产路径）权限，才能从回收站彻底删除文件及历史版本。
+
 ## 第 2 步：把代码推到 GitHub
 
 Vercel 从 Git 仓库部署。把本项目推送到你的 GitHub（私有仓库即可）。
