@@ -112,9 +112,7 @@ def resolve_file(cfg: dict, field: str, value, existing: dict | None) -> tuple[s
 
 # ------------------------------------------------------------------ list / read
 
-@bp.get("/assets")
-@login_required
-def list_assets():
+def asset_list_filters(*, models_only: bool = False) -> tuple[str, list, str]:
     db = get_db()
     query = (request.args.get("query") or "").strip().lower()
     category = (request.args.get("category") or "").strip()
@@ -159,6 +157,8 @@ def list_assets():
     if mine:
         clauses.append("created_by = ?")
         params.append(g.user["id"])
+    if models_only:
+        clauses.append("(glb_key IS NOT NULL AND glb_key != '')")
 
     where_sql = " WHERE " + " AND ".join(clauses) if clauses else ""
     order_map = {
@@ -169,7 +169,22 @@ def list_assets():
         "size_desc": "glb_size DESC, id DESC",
     }
     order_sql = order_map.get(sort, order_map["created_desc"])
+    return where_sql, params, order_sql
 
+
+@bp.get("/assets/slideshow")
+@login_required
+def list_slideshow_models():
+    where_sql, params, order_sql = asset_list_filters(models_only=True)
+    rows = get_db().all(f"SELECT id, name, code FROM assets{where_sql} ORDER BY {order_sql}", params)
+    return jsonify({"items": rows})
+
+
+@bp.get("/assets")
+@login_required
+def list_assets():
+    db = get_db()
+    where_sql, params, order_sql = asset_list_filters()
     try:
         page_size = int(request.args.get("page_size") or DEFAULT_PAGE_SIZE)
         page = int(request.args.get("page") or 1)

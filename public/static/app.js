@@ -1641,6 +1641,7 @@ function bindEvents() {
   });
 
   document.addEventListener("paste", (event) => {
+    if ($("#slideshow").open) return;
     let files = Array.from(event.clipboardData?.files || []);
     if (!files.length) {
       files = Array.from(event.clipboardData?.items || [])
@@ -1722,7 +1723,7 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
+    if (event.key !== "Escape" || $("#slideshow").open) return;
     if (!$("#downloadOverlay").hidden) closeDownloadChoice();
     else if (!$("#optOverlay").hidden) closeOptimizer();
     else if (!$("#accountOverlay").hidden) closeAccount();
@@ -1845,6 +1846,7 @@ async function boot() {
   document.body.classList.remove("booting");
   renderUser();
   bindEvents();
+  bindSlideshow({ query: currentQuery, apiFetch, t });
   bindAccountEvents();
   loadAssets();
 }

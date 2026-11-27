@@ -54,6 +54,9 @@
           <p class="hero-desc" data-i18n="hero.desc">发起人粘贴参考照片创建条目，制作人查看照片后补充制作截图与 GLB，任务的每一步都清晰可见。</p>
         </div>
         <div class="hero-actions">
+          <button class="btn btn-secondary" id="slideshowBtn" type="button" aria-haspopup="dialog">
+            <span class="btn-icon" aria-hidden="true">▷</span><span data-i18n="slideshow.title">模型幻灯片</span>
+          </button>
           <button class="btn btn-secondary" id="refreshBtn" type="button">
             <span class="btn-icon">↻</span><span data-i18n="common.refresh">刷新</span>
           </button>
@@ -447,9 +450,42 @@
     </section>
   </div>
 
+  <dialog class="slideshow" id="slideshow" aria-labelledby="slideshowTitle">
+    <header class="slideshow-header">
+      <h2 id="slideshowTitle" data-i18n="slideshow.title">模型幻灯片</h2>
+      <button class="icon-btn" id="slideshowClose" type="button" autofocus aria-label="关闭" data-i18n-aria="common.close">×</button>
+    </header>
+    <div class="slideshow-stage">
+      <div class="slideshow-models" id="slideshowModels"></div>
+      <p class="slideshow-status" id="slideshowStatus" role="status"></p>
+      <button class="slideshow-arrow slideshow-prev" id="slideshowPrev" type="button" data-i18n-aria="slideshow.previous" aria-label="上一个模型" hidden>‹</button>
+      <button class="slideshow-arrow slideshow-next" id="slideshowNext" type="button" data-i18n-aria="slideshow.next" aria-label="下一个模型" hidden>›</button>
+    </div>
+    <footer class="slideshow-footer">
+      <div class="slideshow-caption" aria-live="polite" aria-atomic="true">
+        <h3 class="slideshow-name" id="slideshowName"></h3>
+        <p class="slideshow-meta" id="slideshowMeta"></p>
+      </div>
+      <div class="slideshow-controls" id="slideshowControls" hidden>
+        <label><input id="slideshowRotate" type="checkbox" checked> <span data-i18n="card.autoRotate">自动旋转</span></label>
+        <label><input id="slideshowPlay" type="checkbox"> <span data-i18n="slideshow.autoplay">自动播放</span></label>
+        <label>
+          <span data-i18n="slideshow.interval">切换间隔</span>
+          <select id="slideshowInterval">
+            <option value="3" data-i18n="slideshow.seconds3">3 秒</option>
+            <option value="5" data-i18n="slideshow.seconds5" selected>5 秒</option>
+            <option value="10" data-i18n="slideshow.seconds10">10 秒</option>
+            <option value="15" data-i18n="slideshow.seconds15">15 秒</option>
+          </select>
+        </label>
+      </div>
+    </footer>
+  </dialog>
+
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
   <script src="/static/i18n.js"></script>
+  <script src="/static/slideshow.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
